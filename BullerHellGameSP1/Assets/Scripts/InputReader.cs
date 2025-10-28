@@ -1,18 +1,32 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
-public class NewBehaviourScript : MonoBehaviour
+namespace BulletHell
 {
-    // Start is called before the first frame update
-    void Start()
+    [RequireComponent(typeof(PlayerInput))]
+    public class InputReader : MonoBehaviour
     {
-        
-    }
+        private PlayerInput playerInput;
+        private InputAction moveAction;
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+        public Vector2 Move => moveAction.ReadValue<Vector2>();
+
+        private void Awake()
+        {
+            playerInput = GetComponent<PlayerInput>();
+
+            // Access the action from the default action map
+            moveAction = playerInput.actions["Move"];
+        }
+
+        private void OnEnable()
+        {
+            moveAction.Enable();
+        }
+
+        private void OnDisable()
+        {
+            moveAction.Disable();
+        }
     }
 }
