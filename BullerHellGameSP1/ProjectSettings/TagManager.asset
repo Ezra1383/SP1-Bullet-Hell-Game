@@ -5,14 +5,17 @@ TagManager:
   serializedVersion: 2
   tags:
   - PlayerBullet
+  - TrackingObject
+  - Actors
+  - SpaceObject
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - SpaceObject
   - Water
   - UI
-  - 
+  - Gameplay
   - 
   - 
   - 
