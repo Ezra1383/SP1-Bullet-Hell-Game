@@ -2,77 +2,44 @@ using UnityEngine;
 
 namespace BulletHell
 {
-    public class WeaponSystem : MonoBehaviour // Fixed capitalization (convention)
+    public class WeaponSystem : MonoBehaviour
     {
-        [SerializeField] InputReader input;
-        [SerializeField] Transform targetPoint;
-        [SerializeField] float targetDistance = 50f;
-        [SerializeField] float smoothTime = 0.2f;
-        [SerializeField] Vector2 aimLimit = new Vector2(50f, 20f);
-        [SerializeField] float aimSpeed = 10f;
-        [SerializeField] float aimReturnSpeed = 0.2f;
-        [SerializeField] GameObject projectilePrefab;
-        [SerializeField] Transform firePoint;
+        [SerializeField] private GameObject bulletPrefab;
+        [SerializeField] private Transform[] firePoints;
+        [SerializeField] private float fireRate = 0.1f;
 
-        Vector3 velocity;
-        Vector2 aimOffset;
+        private float nextFireTime;
 
-        void Awake()
+        public void TryFire()
         {
-            // Subscribe to the public fire event instead of accessing private field
-            input.OnFire += OnFire;
-        }
-
-        void Start()
-        {
-            Cursor.visible = false;
-            Cursor.lockState = CursorLockMode.Locked;
-        }
-
-        private void Update()
-        {
-            // Set the targetPosition ahead of the player's local position by the target distance
-            Vector3 targetPosition = transform.position + transform.forward * targetDistance;
-            Vector3 localPos = transform.InverseTransformPoint(targetPosition); // Changed to TransformPoint for position
-
-            // Fixed the comparison operator
-            if (input.Aim != Vector2.zero)
+            if (Time.time >= nextFireTime)
             {
-                aimOffset += input.Aim * aimSpeed * Time.deltaTime;
+                foreach (Transform pt in firePoints)
+                {
+                    SpawnBullet(pt);
+                }
+                nextFireTime = Time.time + fireRate;
+            }
+        }
 
-                // Clamp the AimOffset 
-                aimOffset.x = Mathf.Clamp(aimOffset.x, -aimLimit.x, aimLimit.x);
-                aimOffset.y = Mathf.Clamp(aimOffset.y, -aimLimit.y, aimLimit.y);
+        private void SpawnBullet(Transform point)
+        {
+            // Create the bullet at the fire point
+            GameObject bullet = Instantiate(bulletPrefab, point.position, point.rotation);
+
+            // FORCE SCALE: If your sun is 1000, your turret might be 0.1
+            // This makes sure the bullet is actually big enough to see
+            bullet.transform.localScale = new Vector3(5, 5, 5);
+
+            Projectile proj = bullet.GetComponent<Projectile>();
+            if (proj != null)
+            {
+                proj.Launch(point.forward);
             }
             else
             {
-                // otherwise return AimOffset to zero
-                aimOffset = Vector2.Lerp(aimOffset, Vector2.zero, Time.deltaTime * aimReturnSpeed);
+                Debug.LogError("No Projectile script on bullet prefab!");
             }
-
-            // Apply the aimOffset to the local position
-            localPos.x += aimOffset.x;
-            localPos.y += aimOffset.y;
-
-            Vector3 desiredPosition = transform.TransformPoint(localPos); // Fixed C# syntax
-
-            // Smoothly damp to the desired position
-            targetPoint.position = Vector3.SmoothDamp(targetPoint.position, desiredPosition, ref velocity, smoothTime);
-        }
-
-        void OnFire()
-        {
-            // Fixed C# syntax (no colon type declarations)
-            Vector3 direction = targetPoint.position - firePoint.position;
-            Quaternion rotation = Quaternion.LookRotation(direction);
-            GameObject projectile = Instantiate(projectilePrefab, firePoint.position, rotation);
-            Destroy(projectile, 5f);
-        }
-
-        void OnDestroy()
-        {
-            // Unsubscribe from the event
-            input.OnFire -= OnFire;
         }
     }
 }
