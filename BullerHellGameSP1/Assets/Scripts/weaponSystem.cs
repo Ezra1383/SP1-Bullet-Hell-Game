@@ -6,7 +6,7 @@ namespace BulletHell
     {
         [Header("References")]
         [SerializeField] private InputReader input;
-        [SerializeField] private Transform aimTarget; // Drag your AimTarget (reticle) here
+        [SerializeField] private Transform aimTarget;
         [SerializeField] private GameObject bulletPrefab;
         [SerializeField] private Transform[] firePoints;
 
@@ -14,6 +14,8 @@ namespace BulletHell
         [SerializeField] private float fireRate = 0.1f;
         [SerializeField] private bool alternateFire = false;
         [SerializeField] private Vector3 bulletScale = new Vector3(5, 5, 5);
+        [SerializeField] private float aimSpeed = 20f;
+        [SerializeField] private bool showDebugRays = false;
 
         private float nextFireTime;
         private int currentFirePointIndex = 0;
@@ -21,6 +23,28 @@ namespace BulletHell
         private void Update()
         {
             if (input == null || aimTarget == null) return;
+
+            Camera mainCam = Camera.main;
+            if (mainCam == null) return;
+
+            // All guns aim parallel - in the direction from camera through aimpoint
+            Vector3 aimDirection = (aimTarget.position - mainCam.transform.position).normalized;
+            Quaternion targetRotation = Quaternion.LookRotation(aimDirection);
+
+            // Rotate all fire points to match the aim direction
+            foreach (Transform firePoint in firePoints)
+            {
+                if (firePoint != null)
+                {
+                    firePoint.rotation = Quaternion.Slerp(firePoint.rotation, targetRotation, aimSpeed * Time.deltaTime);
+
+                    if (showDebugRays)
+                    {
+                        Debug.DrawRay(firePoint.position, firePoint.forward * 100f, Color.green);
+                        Debug.DrawLine(firePoint.position, aimTarget.position, Color.yellow);
+                    }
+                }
+            }
 
             if (input.IsFiring && Time.time >= nextFireTime)
             {
@@ -41,9 +65,7 @@ namespace BulletHell
             else
             {
                 foreach (Transform pt in firePoints)
-                {
                     SpawnBullet(pt);
-                }
             }
             nextFireTime = Time.time + fireRate;
         }
@@ -57,11 +79,7 @@ namespace BulletHell
 
             Projectile proj = bullet.GetComponent<Projectile>();
             if (proj != null)
-            {
-                // FIX: Calculate direction towards the ACTUAL aim target world position
-                Vector3 targetDir = (aimTarget.position - point.position).normalized;
-                proj.Launch(targetDir);
-            }
+                proj.Launch(point.forward);
         }
     }
 }

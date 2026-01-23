@@ -38,13 +38,24 @@ namespace BulletHell
         [SerializeField] private Transform rightTurretPivot;
         [SerializeField] private float turretRotateSpeed = 15f;
 
+        [Header("Aim Settings")]
+        [SerializeField] private Camera mainCamera;
+        [SerializeField] private float aimDistance = 1000f; // Default distance if raycast hits nothing
+        [SerializeField] private LayerMask aimLayerMask = ~0; // What layers to raycast against
+
         private Vector3 velocity;
         private Vector3 targetOffset;
         private float currentRoll;
 
+        // Public property to expose current speed magnitude
+        public float CurrentSpeed => velocity.magnitude;
+
         private void Start()
         {
             currentHealth = maxHealth;
+
+            if (mainCamera == null)
+                mainCamera = Camera.main;
         }
 
         private void Update()
@@ -53,6 +64,7 @@ namespace BulletHell
 
             HandleMovement();
             HandleRotation();
+            UpdateAimTarget();
             HandleTurretAiming();
             HandleRegeneration();
         }
@@ -105,6 +117,51 @@ namespace BulletHell
             {
                 currentRoll = Mathf.Lerp(currentRoll, -input.Move.x * maxRoll, Time.deltaTime * rotationSmoothness);
                 playerModel.localRotation = Quaternion.Euler(0f, 0f, currentRoll);
+            }
+        }
+
+        private void UpdateAimTarget()
+        {
+            if (aimTarget == null || mainCamera == null) return;
+
+            // Get mouse position directly from Unity (not Input System)
+            Vector3 mousePos = Input.mousePosition;
+
+            // Create a ray from the camera through the mouse position
+            Ray ray = mainCamera.ScreenPointToRay(mousePos);
+
+            // Raycast to find actual world geometry, ignoring the aimpoint itself and player
+            RaycastHit[] hits = Physics.RaycastAll(ray, aimDistance, aimLayerMask);
+            RaycastHit? closestHit = null;
+            float closestDistance = float.MaxValue;
+
+            foreach (RaycastHit hit in hits)
+            {
+                // Ignore the aimpoint itself, player, and player bullets
+                if (hit.transform == aimTarget ||
+                    hit.transform.IsChildOf(aimTarget) ||
+                    hit.transform == transform ||
+                    hit.transform.IsChildOf(transform) ||
+                    hit.collider.CompareTag("PlayerBullet"))
+                    continue;
+
+                // Track closest valid hit
+                if (hit.distance < closestDistance)
+                {
+                    closestDistance = hit.distance;
+                    closestHit = hit;
+                }
+            }
+
+            if (closestHit.HasValue)
+            {
+                // Use the closest valid hit
+                aimTarget.position = closestHit.Value.point;
+            }
+            else
+            {
+                // Hit nothing valid - use far distance
+                aimTarget.position = ray.GetPoint(aimDistance);
             }
         }
 

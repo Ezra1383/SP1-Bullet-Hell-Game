@@ -6,17 +6,17 @@ namespace BulletHell
     {
         public float speed = 800f;
         public float lifeTime = 5f;
-        public int damage = 1; // New: Added damage value
-        public string targetTag = "Enemy"; // Set this to "Enemy" for player bullets
+        public int damage = 1;
+        public string targetTag = "Enemy";
 
         private bool isMoving = false;
-        private Vector3 moveDir;
+        private Vector3 direction;
 
-        public void Launch(Vector3 direction)
+        public void Launch(Vector3 dir)
         {
             transform.SetParent(null);
             gameObject.isStatic = false;
-            moveDir = direction.normalized;
+            direction = dir.normalized;
             isMoving = true;
             Destroy(gameObject, lifeTime);
         }
@@ -24,7 +24,7 @@ namespace BulletHell
         void Update()
         {
             if (!isMoving) return;
-            transform.Translate(moveDir * speed * Time.deltaTime, Space.World);
+            transform.position += direction * speed * Time.deltaTime;
         }
 
         private void OnTriggerEnter(Collider other)

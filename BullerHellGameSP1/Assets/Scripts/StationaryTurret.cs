@@ -78,15 +78,10 @@ namespace BulletHell
             {
                 GameObject bullet = Instantiate(bulletPrefab, cannon.firePoint.position, cannon.firePoint.rotation);
 
-                // Use Projectile instead of EnemyBullet
                 Projectile bulletScript = bullet.GetComponent<Projectile>();
                 if (bulletScript != null)
                 {
                     bulletScript.Launch(cannon.firePoint.forward);
-                }
-                else
-                {
-                    Debug.LogError("No Projectile script found on bullet prefab!");
                 }
             }
         }

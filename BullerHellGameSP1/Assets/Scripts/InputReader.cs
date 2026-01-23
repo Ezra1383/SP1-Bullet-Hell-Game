@@ -35,9 +35,29 @@ namespace BulletHell
             if (playerInput == null)
                 playerInput = GetComponent<PlayerInput>();
 
-            moveAction = playerInput.actions["Move"];
-            aimAction = playerInput.actions["Aim"];
-            fireAction = playerInput.actions["Fire"];
+            if (playerInput == null)
+            {
+                Debug.LogError("PlayerInput component not found on InputReader!");
+                return;
+            }
+
+            if (playerInput.actions == null)
+            {
+                Debug.LogError("PlayerInput has no actions assigned! Assign an Input Actions asset.");
+                return;
+            }
+
+            try
+            {
+                moveAction = playerInput.actions["Move"];
+                aimAction = playerInput.actions["Aim"];
+                fireAction = playerInput.actions["Fire"];
+                Debug.Log("Input actions loaded successfully");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to load input actions: {e.Message}");
+            }
         }
 
         void OnEnable()
