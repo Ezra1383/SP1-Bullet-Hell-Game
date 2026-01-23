@@ -9,7 +9,6 @@ namespace BulletHell
     {
         [SerializeField] private PlayerInput playerInput;
         [SerializeField] private float doubleTapTime = 0.3f;
-        [SerializeField] private float tapThreshold = 0.15f;
 
         private InputAction moveAction;
         private InputAction aimAction;
@@ -20,14 +19,16 @@ namespace BulletHell
         private bool leftTapRegistered;
         private bool rightTapRegistered;
 
-        // Using original event names as requested
         public event Action leftTap;
         public event Action rightTap;
-        public event Action OnFire; // Keeping this consistent with previous fix
+        public event Action OnFire;
 
-        // Public properties with getters (read-only access)
+        // Public properties
         public Vector2 Move => moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
         public Vector2 Aim => aimAction?.ReadValue<Vector2>() ?? Vector2.zero;
+
+        // NEW: Check if the fire button is currently held down
+        public bool IsFiring => fireAction != null && fireAction.IsPressed();
 
         void Awake()
         {
@@ -77,23 +78,19 @@ namespace BulletHell
             Vector2 moveValue = ctx.ReadValue<Vector2>();
             float currentTime = Time.time;
 
-            // Check for left movement (A or Left Arrow)
             if (moveValue.x < -0.5f)
             {
                 if (currentTime - lastLeftTapTime < doubleTapTime && !leftTapRegistered)
                 {
-                    Debug.Log("Left Double Tap Detected!");
                     leftTap?.Invoke();
                     leftTapRegistered = true;
                 }
                 lastLeftTapTime = currentTime;
             }
-            // Check for right movement (D or Right Arrow)
             else if (moveValue.x > 0.5f)
             {
                 if (currentTime - lastRightTapTime < doubleTapTime && !rightTapRegistered)
                 {
-                    Debug.Log("Right Double Tap Detected!");
                     rightTap?.Invoke();
                     rightTapRegistered = true;
                 }
@@ -103,17 +100,8 @@ namespace BulletHell
 
         void OnMoveCanceled(InputAction.CallbackContext ctx)
         {
-            Vector2 moveValue = ctx.ReadValue<Vector2>();
-
-            // Reset tap registration when movement is released
-            if (moveValue.x >= -0.1f) // Left key released
-            {
-                leftTapRegistered = false;
-            }
-            if (moveValue.x <= 0.1f) // Right key released
-            {
-                rightTapRegistered = false;
-            }
+            leftTapRegistered = false;
+            rightTapRegistered = false;
         }
     }
 }

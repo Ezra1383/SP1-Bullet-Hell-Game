@@ -11,78 +11,40 @@ namespace BulletHell
         [SerializeField] private Transform aimTarget;
         [SerializeField] private Transform playerModel;
 
-        [Header("Turret References")]
-        [SerializeField] private Transform leftTurretPivot;
-        [SerializeField] private Transform rightTurretPivot;
-        [SerializeField] private float turretRotateSpeed = 8f;
-        [SerializeField] private bool limitTurretRotation = true;
-        [SerializeField] private float maxTurretYaw = 60f; // How far turrets can rotate left/right
-        [SerializeField] private float maxTurretPitch = 45f; // How far turrets can rotate up/down
+        [Header("Player Stats & Regen")]
+        [SerializeField] private int maxHealth = 10;
+        [SerializeField] private int currentHealth;
+        [SerializeField] private float regenDelay = 10f; // Wait 10s after being hit
+        [SerializeField] private float regenInterval = 1f; // Heal 1 HP every 1s after delay
+
+        private float lastHitTime;
+        private float nextRegenTick;
+
+        [Header("Visual Framing")]
+        [SerializeField] private Vector2 homeOffset = new Vector2(0, -1.5f);
+        [SerializeField] private float followDistance = 5f;
 
         [Header("Movement Settings")]
-        [SerializeField] private float followDistance = 2f;
-        [SerializeField] private Vector2 movementLimit = new Vector2(2f, 2f);
-        [SerializeField] private float movementSpeed = 10f;
-        [SerializeField] private float smoothTime = 0.2f;
+        [SerializeField] private Vector2 movementLimit = new Vector2(8f, 5f);
+        [SerializeField] private float movementSpeed = 12f;
+        [SerializeField] private float smoothTime = 0.15f;
 
-        [Header("Rotation Settings")]
-        [SerializeField] private float maxRoll = 15f;
-        [SerializeField] private float maxPitch = 10f;
-        [SerializeField] private float rollSpeed = 5f;
-        [SerializeField] private float pitchSpeed = 5f;
+        [Header("Banking Settings")]
+        [SerializeField] private float maxRoll = 35f;
+        [SerializeField] private float rotationSmoothness = 10f;
+
+        [Header("Turret Settings")]
+        [SerializeField] private Transform leftTurretPivot;
+        [SerializeField] private Transform rightTurretPivot;
+        [SerializeField] private float turretRotateSpeed = 15f;
 
         private Vector3 velocity;
-        private float roll;
-        private float pitch;
         private Vector3 targetOffset;
+        private float currentRoll;
 
-        private void Awake()
+        private void Start()
         {
-            if (input != null)
-            {
-                input.leftTap += OnLeftTap;
-                input.rightTap += OnRightTap;
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (input != null)
-            {
-                input.leftTap -= OnLeftTap;
-                input.rightTap -= OnRightTap;
-            }
-        }
-
-        private void OnLeftTap()
-        {
-            BarrelRoll(-1);
-        }
-
-        private void OnRightTap()
-        {
-            BarrelRoll(1);
-        }
-
-        private void BarrelRoll(int direction)
-        {
-            if (playerModel == null)
-            {
-                Debug.LogWarning("Player model not assigned!");
-                return;
-            }
-
-            if (!DOTween.IsTweening(playerModel))
-            {
-                playerModel.DOLocalRotate(
-                    new Vector3(
-                        playerModel.localEulerAngles.x,
-                        playerModel.localEulerAngles.y,
-                        360f * direction),
-                    0.5f,
-                    RotateMode.LocalAxisAdd
-                ).SetEase(Ease.OutCubic);
-            }
+            currentHealth = maxHealth;
         }
 
         private void Update()
@@ -90,55 +52,64 @@ namespace BulletHell
             if (followTarget == null || input == null) return;
 
             HandleMovement();
-            HandleBodyRotation();
+            HandleRotation();
             HandleTurretAiming();
+            HandleRegeneration();
+        }
+
+        public void TakeDamage(int damage)
+        {
+            currentHealth -= damage;
+            lastHitTime = Time.time; // Reset the 10-second timer
+            Debug.Log($"Player Hit! Health: {currentHealth}");
+
+            if (currentHealth <= 0) Die();
+        }
+
+        private void HandleRegeneration()
+        {
+            // Only heal if we are damaged and enough time has passed since the last hit
+            if (currentHealth < maxHealth && Time.time > lastHitTime + regenDelay)
+            {
+                if (Time.time >= nextRegenTick)
+                {
+                    currentHealth++;
+                    nextRegenTick = Time.time + regenInterval;
+                    Debug.Log($"Regenerating... Health: {currentHealth}");
+                }
+            }
         }
 
         private void HandleMovement()
         {
-            if (input.Move != Vector2.zero)
-            {
-                targetOffset.x += input.Move.x * movementSpeed * Time.deltaTime;
-                targetOffset.y += input.Move.y * movementSpeed * Time.deltaTime;
+            targetOffset.x += input.Move.x * movementSpeed * Time.deltaTime;
+            targetOffset.y += input.Move.y * movementSpeed * Time.deltaTime;
+            targetOffset.x = Mathf.Clamp(targetOffset.x, -movementLimit.x, movementLimit.x);
+            targetOffset.y = Mathf.Clamp(targetOffset.y, -movementLimit.y, movementLimit.y);
 
-                targetOffset.x = Mathf.Clamp(targetOffset.x, -movementLimit.x, movementLimit.x);
-                targetOffset.y = Mathf.Clamp(targetOffset.y, -movementLimit.y, movementLimit.y);
-            }
-            else
-            {
-                targetOffset = Vector3.Lerp(targetOffset, Vector3.zero, Time.deltaTime * 5f);
-            }
+            if (input.Move == Vector2.zero)
+                targetOffset = Vector3.Lerp(targetOffset, Vector3.zero, Time.deltaTime * 3f);
 
-            Vector3 baseTargetPos = followTarget.position - followTarget.forward * followDistance;
-            Vector3 finalTargetPos = baseTargetPos +
-                                   followTarget.right * targetOffset.x +
-                                   followTarget.up * targetOffset.y;
+            Vector3 baseTargetPos = followTarget.position - (followTarget.forward * followDistance);
+            Vector3 finalTargetPos = baseTargetPos
+                                   + (followTarget.right * (homeOffset.x + targetOffset.x))
+                                   + (followTarget.up * (homeOffset.y + targetOffset.y));
 
             transform.position = Vector3.SmoothDamp(transform.position, finalTargetPos, ref velocity, smoothTime);
         }
 
-        private void HandleBodyRotation()
+        private void HandleRotation()
         {
-            // Player body follows the spline direction
-            Vector3 forwardDir = followTarget.forward;
-
-            if (forwardDir.sqrMagnitude > 0f)
+            transform.rotation = Quaternion.LookRotation(followTarget.forward, Vector3.up);
+            if (playerModel != null)
             {
-                Quaternion targetRotation = Quaternion.LookRotation(forwardDir, Vector3.up);
-
-                roll = Mathf.Lerp(roll, -input.Move.x * maxRoll, Time.deltaTime * rollSpeed);
-                pitch = Mathf.Lerp(pitch, -input.Move.y * maxPitch, Time.deltaTime * pitchSpeed);
-
-                targetRotation *= Quaternion.Euler(pitch, 0f, roll);
-                transform.rotation = targetRotation;
+                currentRoll = Mathf.Lerp(currentRoll, -input.Move.x * maxRoll, Time.deltaTime * rotationSmoothness);
+                playerModel.localRotation = Quaternion.Euler(0f, 0f, currentRoll);
             }
         }
 
         private void HandleTurretAiming()
         {
-            if (aimTarget == null) return;
-
-            // Rotate both turrets to aim at the target
             RotateTurret(leftTurretPivot);
             RotateTurret(rightTurretPivot);
         }
@@ -146,38 +117,15 @@ namespace BulletHell
         private void RotateTurret(Transform turret)
         {
             if (turret == null) return;
-
             Vector3 direction = aimTarget.position - turret.position;
+            if (direction.sqrMagnitude < 0.1f) return;
+            turret.rotation = Quaternion.Slerp(turret.rotation, Quaternion.LookRotation(direction), turretRotateSpeed * Time.deltaTime);
+        }
 
-            if (direction.sqrMagnitude > 0.01f)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(direction);
-
-                if (limitTurretRotation)
-                {
-                    // Calculate the rotation relative to the player's forward
-                    Quaternion localRotation = Quaternion.Inverse(transform.rotation) * targetRotation;
-                    Vector3 localEuler = localRotation.eulerAngles;
-
-                    // Normalize angles to -180 to 180
-                    if (localEuler.x > 180) localEuler.x -= 360;
-                    if (localEuler.y > 180) localEuler.y -= 360;
-
-                    // Clamp the rotation
-                    localEuler.y = Mathf.Clamp(localEuler.y, -maxTurretYaw, maxTurretYaw);
-                    localEuler.x = Mathf.Clamp(localEuler.x, -maxTurretPitch, maxTurretPitch);
-                    localEuler.z = 0; // Keep turret upright
-
-                    // Convert back to world rotation
-                    targetRotation = transform.rotation * Quaternion.Euler(localEuler);
-                }
-
-                turret.rotation = Quaternion.Lerp(
-                    turret.rotation,
-                    targetRotation,
-                    turretRotateSpeed * Time.deltaTime
-                );
-            }
+        private void Die()
+        {
+            Debug.Log("Game Over!");
+            // Add explosion VFX or Scene Restart here
         }
     }
 }

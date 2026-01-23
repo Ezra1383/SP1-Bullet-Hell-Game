@@ -249,9 +249,15 @@ namespace BulletHell
 
         void OnTriggerEnter(Collider other)
         {
+            // Check if the hit object is the Player
             if (other.CompareTag("Player"))
             {
-                // Damage player
+                // Access the PlayerController to apply damage
+                if (other.TryGetComponent(out PlayerController player))
+                {
+                    player.TakeDamage(1);
+                }
+
                 Destroy(gameObject);
             }
         }
