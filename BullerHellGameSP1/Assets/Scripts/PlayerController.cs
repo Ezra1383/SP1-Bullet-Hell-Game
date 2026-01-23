@@ -125,7 +125,7 @@ namespace BulletHell
             if (aimTarget == null || mainCamera == null) return;
 
             // Get mouse position directly from Unity (not Input System)
-            Vector3 mousePos = Input.mousePosition;
+            Vector3 mousePos = (Vector3)input.Aim;
 
             // Create a ray from the camera through the mouse position
             Ray ray = mainCamera.ScreenPointToRay(mousePos);

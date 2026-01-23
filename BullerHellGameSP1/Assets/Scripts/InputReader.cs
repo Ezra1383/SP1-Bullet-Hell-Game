@@ -23,12 +23,42 @@ namespace BulletHell
         public event Action rightTap;
         public event Action OnFire;
 
-        // Public properties
-        public Vector2 Move => moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
-        public Vector2 Aim => aimAction?.ReadValue<Vector2>() ?? Vector2.zero;
+        public bool useMediaPipeInput = false;
+        private Vector2 _mediaPipeMove;
+        private Vector2 _mediaPipeAim;
+        private bool _mediaPipeFire;
 
-        // NEW: Check if the fire button is currently held down
-        public bool IsFiring => fireAction != null && fireAction.IsPressed();
+        // Public properties
+        public Vector2 Move
+        {
+            get
+            {
+                if (useMediaPipeInput) return _mediaPipeMove;
+                return moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
+            }
+        }
+
+        public Vector2 Aim
+        {
+            get
+            {
+                if (useMediaPipeInput) return _mediaPipeAim;
+                return aimAction?.ReadValue<Vector2>() ?? Vector2.zero;
+            }
+        }
+
+        public bool IsFiring
+        {
+            get
+            {
+                if (useMediaPipeInput) return _mediaPipeFire;
+                return fireAction != null && fireAction.IsPressed();
+            }
+        }
+
+        public void SetMediaPipeMove(Vector2 move) => _mediaPipeMove = move;
+        public void SetMediaPipeAim(Vector2 aim) => _mediaPipeAim = aim;
+        public void SetMediaPipeFire(bool fire) => _mediaPipeFire = fire;
 
         void Awake()
         {
