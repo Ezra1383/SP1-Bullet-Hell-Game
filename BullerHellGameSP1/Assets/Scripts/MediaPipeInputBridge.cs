@@ -1,128 +1,174 @@
 using UnityEngine;
+using BulletHell;
+
+using Mediapipe;
 using Mediapipe.Tasks.Vision.PoseLandmarker;
 using Mediapipe.Tasks.Vision.HandLandmarker;
-// Add your Sample namespaces if needed, e.g.:
+using Mediapipe.Tasks.Components.Containers;
 using Mediapipe.Unity.Sample.PoseLandmarkDetection;
 using Mediapipe.Unity.Sample.HandLandmarkDetection;
 
-namespace BulletHell
+/// <summary>
+/// Bridges MediaPipe Unity Plugin results into the existing Bullet Hell input system.
+/// - Pose (body) controls plane movement via InputReader.Move
+/// - Right hand index fingertip controls turret aim via InputReader.Aim (screen position)
+/// </summary>
+public class MediaPipeInputBridge : MonoBehaviour
 {
-    public class MediaPipeInputBridge : MonoBehaviour
+    [Header("Game Input")]
+    [SerializeField] private InputReader inputReader;
+
+    [Header("MediaPipe Runners (optional – auto-found if left empty)")]
+    [SerializeField] private PoseLandmarkerRunner poseRunner;
+    [SerializeField] private HandLandmarkerRunner handRunner;
+
+    [Header("Movement Tuning")]
+    [Tooltip("How strongly body lean affects horizontal movement. Smaller = more sensitive.")]
+    [SerializeField] private float horizontalSensitivity = 0.2f;
+
+    [Tooltip("How strongly body up/down affects vertical movement. Smaller = more sensitive.")]
+    [SerializeField] private float verticalSensitivity = 0.2f;
+
+    [Tooltip("Lerp factor for smoothing movement (0 = no smoothing, 1 = instant).")]
+    [Range(0f, 1f)]
+    [SerializeField] private float moveSmoothing = 0.2f;
+
+    [Header("Aim Tuning")]
+    [Tooltip("Lerp factor for smoothing aim (0 = no smoothing, 1 = instant).")]
+    [Range(0f, 1f)]
+    [SerializeField] private float aimSmoothing = 0.2f;
+
+    private Vector2 _currentMove;
+    private Vector2 _currentAim;
+
+    // MediaPipe landmark indices (see MediaPipe Pose & Hands docs)
+    private const int PoseLeftShoulder = 11;
+    private const int PoseRightShoulder = 12;
+    private const int PoseLeftHip = 23;
+    private const int PoseRightHip = 24;
+
+    private const int HandIndexTip = 8;
+
+    private void Awake()
     {
-        [Header("References")]
-        [SerializeField] private InputReader inputReader;
-        [SerializeField] private PoseLandmarkerRunner poseRunner;
-        [SerializeField] private HandLandmarkerRunner handRunner;
-
-        [Header("Movement Calibration (Pose)")]
-        [SerializeField] private float movementSensitivity = 2.0f;
-        [SerializeField] private float deadzone = 0.05f; // How much you can wiggle before the jet moves
-
-        [Header("Aiming Calibration (Hand)")]
-        [SerializeField] private float aimSensitivity = 1.5f;
-        [SerializeField] private float pinchThreshold = 0.05f; // Distance for "Click"
-
-        // Local state
-        private Vector2 _neutralChestPos = new Vector2(0.5f, 0.5f); // Start assuming center is 0.5
-        private bool _isCalibrated = false;
-
-        private void Start()
+        if (inputReader == null)
         {
-            // Auto-enable the MediaPipe override
-            if (inputReader != null)
-                inputReader.useMediaPipeInput = true;
+            inputReader = FindObjectOfType<InputReader>();
         }
 
-        private void OnEnable()
+        if (poseRunner == null)
         {
-            if (poseRunner != null) poseRunner.OnPoseResult += HandlePose;
-            if (handRunner != null) handRunner.OnHandResult += HandleHand;
+            poseRunner = FindObjectOfType<PoseLandmarkerRunner>(true);
         }
 
-        private void OnDisable()
+        if (handRunner == null)
         {
-            if (poseRunner != null) poseRunner.OnPoseResult -= HandlePose;
-            if (handRunner != null) handRunner.OnHandResult -= HandleHand;
+            handRunner = FindObjectOfType<HandLandmarkerRunner>(true);
         }
 
-        // --- HANDLER: POSE (Movement) ---
-        private void HandlePose(PoseLandmarkerResult result)
+        if (inputReader != null)
         {
-            if (result.poseLandmarks == null || result.poseLandmarks.Count == 0)
-            {
-                inputReader.SetMediaPipeMove(Vector2.zero);
-                return;
-            }
-
-            // Get landmarks (11 = Left Shoulder, 12 = Right Shoulder)
-            // Note: Lists contain NormalizedLandmarks usually
-            var landmarks = result.poseLandmarks[0];
-            var leftShoulder = landmarks[11];
-            var rightShoulder = landmarks[12];
-
-            // 1. Calculate Chest Center
-            float chestX = (leftShoulder.x + rightShoulder.x) / 2f;
-            float chestY = (leftShoulder.y + rightShoulder.y) / 2f;
-
-            // Optional: Auto-calibrate on first frame or via button
-            if (!_isCalibrated)
-            {
-                _neutralChestPos = new Vector2(chestX, chestY);
-                _isCalibrated = true;
-            }
-
-            // 2. Calculate Deviation from Neutral
-            // Note: MediaPipe X is 0(left)->1(right). Y is 0(top)->1(bottom).
-            // Unity Input is -1(left)->1(right). Y is -1(down)->1(up).
-
-            float diffX = (chestX - _neutralChestPos.x);
-            float diffY = (_neutralChestPos.y - chestY); // Invert Y for game feel (Lean forward = Up)
-
-            // 3. Apply Deadzone & Sensitivity
-            if (Mathf.Abs(diffX) < deadzone) diffX = 0;
-            if (Mathf.Abs(diffY) < deadzone) diffY = 0;
-
-            Vector2 moveSignal = new Vector2(diffX, diffY) * movementSensitivity;
-
-            // Clamp to -1 to 1 for standard input behavior
-            moveSignal.x = Mathf.Clamp(moveSignal.x, -1f, 1f);
-            moveSignal.y = Mathf.Clamp(moveSignal.y, -1f, 1f);
-
-            // Send to InputReader
-            inputReader.SetMediaPipeMove(moveSignal);
-        }
-
-        // --- HANDLER: HAND (Aiming & Fire) ---
-        private void HandleHand(HandLandmarkerResult result)
-        {
-            if (result.handLandmarks == null || result.handLandmarks.Count == 0)
-            {
-                inputReader.SetMediaPipeFire(false);
-                return;
-            }
-
-            // Assume Player uses the first detected hand for aiming
-            var landmarks = result.handLandmarks[0];
-            var indexTip = landmarks[8];
-            var thumbTip = landmarks[4];
-
-            // 1. Aiming (Map 0-1 coords to Screen/Game Aim)
-            // In Unity Input System, "Aim" usually expects Screen Coordinates or Delta.
-            // Since your PlayerController does: Ray ray = mainCamera.ScreenPointToRay(mousePos);
-            // We need to provide "Virtual Mouse Coordinates".
-
-            float screenX = indexTip.x * Screen.width;
-            float screenY = (1f - indexTip.y) * Screen.height; // Invert Y for Screen Space
-
-            // NOTE: MediaPipe camera is mirrored? You might need (1f - indexTip.x) depending on setup.
-
-            inputReader.SetMediaPipeAim(new Vector2(screenX, screenY));
-
-            // 2. Firing (Pinch Detection)
-            float pinchDist = Vector2.Distance(new Vector2(indexTip.x, indexTip.y), new Vector2(thumbTip.x, thumbTip.y));
-            bool isPinching = pinchDist < pinchThreshold;
-
-            inputReader.SetMediaPipeFire(isPinching);
+            inputReader.useMediaPipeInput = true;
         }
     }
+
+    private void OnEnable()
+    {
+        if (poseRunner != null)
+        {
+            poseRunner.OnPoseResult += HandlePoseResult;
+        }
+
+        if (handRunner != null)
+        {
+            handRunner.OnHandResult += HandleHandResult;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (poseRunner != null)
+        {
+            poseRunner.OnPoseResult -= HandlePoseResult;
+        }
+
+        if (handRunner != null)
+        {
+            handRunner.OnHandResult -= HandleHandResult;
+        }
+    }
+
+    private void Update()
+    {
+        if (inputReader == null) return;
+
+        // Push the latest smoothed values into InputReader each frame
+        inputReader.SetMediaPipeMove(_currentMove);
+        inputReader.SetMediaPipeAim(_currentAim);
+        // For now we don't control fire; can be added later via gesture.
+        inputReader.SetMediaPipeFire(false);
+    }
+
+    private void HandlePoseResult(PoseLandmarkerResult result)
+    {
+        // PoseLandmarkerResult is a struct; check the internal list instead
+        if (result.poseLandmarks == null || result.poseLandmarks.Count == 0)
+        {
+            _currentMove = Vector2.Lerp(_currentMove, Vector2.zero, moveSmoothing);
+            return;
+        }
+
+        var landmarks = result.poseLandmarks[0];
+        // NormalizedLandmarks is a struct that wraps a List<NormalizedLandmark>
+        if (landmarks.landmarks == null || landmarks.landmarks.Count <= PoseRightHip)
+        {
+            _currentMove = Vector2.Lerp(_currentMove, Vector2.zero, moveSmoothing);
+            return;
+        }
+
+        var leftShoulder = landmarks.landmarks[PoseLeftShoulder];
+        var rightShoulder = landmarks.landmarks[PoseRightShoulder];
+        var leftHip = landmarks.landmarks[PoseLeftHip];
+        var rightHip = landmarks.landmarks[PoseRightHip];
+
+        // Center of upper body in normalized image space [0,1]
+        float centerX = (leftShoulder.x + rightShoulder.x) * 0.5f;
+        float hipY = (leftHip.y + rightHip.y) * 0.5f;
+
+        // Map normalized to -1..1 with tunable sensitivity
+        float moveX = Mathf.Clamp((centerX - 0.5f) / Mathf.Max(0.0001f, horizontalSensitivity), -1f, 1f);
+        float moveY = Mathf.Clamp((0.5f - hipY) / Mathf.Max(0.0001f, verticalSensitivity), -1f, 1f);
+
+        var targetMove = new Vector2(moveX, moveY);
+        _currentMove = Vector2.Lerp(_currentMove, targetMove, moveSmoothing > 0f ? moveSmoothing : 1f);
+    }
+
+    private void HandleHandResult(HandLandmarkerResult result)
+    {
+        // HandLandmarkerResult is a struct; check the internal list instead
+        if (result.handLandmarks == null || result.handLandmarks.Count == 0)
+        {
+            return;
+        }
+
+        // Use the first detected hand for aiming
+        var handLandmarks = result.handLandmarks[0];
+        if (handLandmarks.landmarks == null || handLandmarks.landmarks.Count <= HandIndexTip)
+        {
+            return;
+        }
+
+        var indexTip = handLandmarks.landmarks[HandIndexTip];
+
+        // indexTip.X/Y are normalized [0,1] in image coordinates.
+        float normX = indexTip.x;
+        float normY = indexTip.y;
+
+        float screenX = normX * Screen.width;
+        float screenY = (1f - normY) * Screen.height; // flip Y to match Unity screen coords
+
+        var targetAim = new Vector2(screenX, screenY);
+        _currentAim = Vector2.Lerp(_currentAim, targetAim, aimSmoothing > 0f ? aimSmoothing : 1f);
+    }
 }
+
