@@ -1,3 +1,4 @@
+using DG.Tweening;
 using UnityEngine;
 
 namespace BulletHell
@@ -93,13 +94,49 @@ namespace BulletHell
 
         private void HandleMovement()
         {
-            targetOffset.x += input.Move.x * movementSpeed * Time.deltaTime;
-            targetOffset.y += input.Move.y * movementSpeed * Time.deltaTime;
-            targetOffset.x = Mathf.Clamp(targetOffset.x, -movementLimit.x, movementLimit.x);
-            targetOffset.y = Mathf.Clamp(targetOffset.y, -movementLimit.y, movementLimit.y);
+            if (input.useMediaPipeInput)
+            {
+                // MediaPipe: input.Move encodes the desired face position in normalized [0,1] space.
+                // We convert that to a target offset, then move the plane toward it using
+                // the same "move vector" style the plane script already uses.
 
-            if (input.Move == Vector2.zero)
-                targetOffset = Vector3.Lerp(targetOffset, Vector3.zero, Time.deltaTime * 3f);
+                // 1. Convert normalized face position to desired offset in our movement area.
+                Vector2 normPos = input.Move; // expected 0..1 from MediaPipeInputBridge
+                float desiredX = Mathf.Lerp(-movementLimit.x, movementLimit.x, Mathf.Clamp01(normPos.x));
+                float desiredY = Mathf.Lerp(-movementLimit.y, movementLimit.y, Mathf.Clamp01(normPos.y));
+                Vector2 desiredOffset = new Vector2(desiredX, desiredY);
+
+                // 2. Compute direction from current offset to target offset.
+                Vector2 currentOffset = new Vector2(targetOffset.x, targetOffset.y);
+                Vector2 toTarget = desiredOffset - currentOffset;
+
+                // 3. Turn that into a "move vector" limited to length 1
+                // so the actual movement speed is still controlled by movementSpeed.
+                Vector2 moveVector = Vector2.zero;
+                if (toTarget.sqrMagnitude > 0.0001f)
+                {
+                    // Scale by distance but clamp to max length 1 for stable speed.
+                    moveVector = Vector2.ClampMagnitude(toTarget, 1f);
+                }
+
+                // 4. Apply the move vector exactly like other inputs do.
+                targetOffset.x += moveVector.x * movementSpeed * Time.deltaTime;
+                targetOffset.y += moveVector.y * movementSpeed * Time.deltaTime;
+                targetOffset.x = Mathf.Clamp(targetOffset.x, -movementLimit.x, movementLimit.x);
+                targetOffset.y = Mathf.Clamp(targetOffset.y, -movementLimit.y, movementLimit.y);
+            }
+            else
+            {
+                // Traditional controls: Move is a direct input vector (stick/keys)
+                // that we integrate over time.
+                targetOffset.x += input.Move.x * movementSpeed * Time.deltaTime;
+                targetOffset.y += input.Move.y * movementSpeed * Time.deltaTime;
+                targetOffset.x = Mathf.Clamp(targetOffset.x, -movementLimit.x, movementLimit.x);
+                targetOffset.y = Mathf.Clamp(targetOffset.y, -movementLimit.y, movementLimit.y);
+
+                if (input.Move == Vector2.zero)
+                    targetOffset = Vector3.Lerp(targetOffset, Vector3.zero, Time.deltaTime * 3f);
+            }
 
             Vector3 baseTargetPos = followTarget.position - (followTarget.forward * followDistance);
             Vector3 finalTargetPos = baseTargetPos

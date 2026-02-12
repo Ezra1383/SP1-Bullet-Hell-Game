@@ -10,7 +10,7 @@ using Mediapipe.Unity.Sample.HandLandmarkDetection;
 
 /// <summary>
 /// Bridges MediaPipe Unity Plugin results into the existing Bullet Hell input system.
-/// - Pose (body) controls plane movement via InputReader.Move
+/// - Pose (body/face) drives plane movement toward the face position
 /// - Right hand index fingertip controls turret aim via InputReader.Aim (screen position)
 /// </summary>
 public class MediaPipeInputBridge : MonoBehaviour
@@ -29,19 +29,8 @@ public class MediaPipeInputBridge : MonoBehaviour
     [Tooltip("How strongly body up/down affects vertical movement. Smaller = more sensitive.")]
     [SerializeField] private float verticalSensitivity = 0.2f;
 
-    [Tooltip("Lerp factor for smoothing movement (0 = no smoothing, 1 = instant).")]
-    [Range(0f, 1f)]
-    [SerializeField] private float moveSmoothing = 0.2f;
-
-    [Header("Aim Tuning")]
-    [Tooltip("Lerp factor for smoothing aim (0 = no smoothing, 1 = instant).")]
-    [Range(0f, 1f)]
-    [SerializeField] private float aimSmoothing = 0.2f;
-
-    private Vector2 _currentMove;
-    private Vector2 _currentAim;
-
     // MediaPipe landmark indices (see MediaPipe Pose & Hands docs)
+    private const int PoseNose = 0;
     private const int PoseLeftShoulder = 11;
     private const int PoseRightShoulder = 12;
     private const int PoseLeftHip = 23;
@@ -68,6 +57,7 @@ public class MediaPipeInputBridge : MonoBehaviour
 
         if (inputReader != null)
         {
+            // Tell the rest of the game to use MediaPipe-sourced input vectors.
             inputReader.useMediaPipeInput = true;
         }
     }
@@ -102,19 +92,19 @@ public class MediaPipeInputBridge : MonoBehaviour
     {
         if (inputReader == null) return;
 
-        // Push the latest smoothed values into InputReader each frame
-        inputReader.SetMediaPipeMove(_currentMove);
-        inputReader.SetMediaPipeAim(_currentAim);
         // For now we don't control fire; can be added later via gesture.
         inputReader.SetMediaPipeFire(false);
     }
 
     private void HandlePoseResult(PoseLandmarkerResult result)
     {
+        if (inputReader == null) return;
+
         // PoseLandmarkerResult is a struct; check the internal list instead
         if (result.poseLandmarks == null || result.poseLandmarks.Count == 0)
         {
-            _currentMove = Vector2.Lerp(_currentMove, Vector2.zero, moveSmoothing);
+            // No body detected – treat as no movement.
+            inputReader.SetMediaPipeMove(Vector2.zero);
             return;
         }
 
@@ -122,32 +112,39 @@ public class MediaPipeInputBridge : MonoBehaviour
         // NormalizedLandmarks is a struct that wraps a List<NormalizedLandmark>
         if (landmarks.landmarks == null || landmarks.landmarks.Count <= PoseRightHip)
         {
-            _currentMove = Vector2.Lerp(_currentMove, Vector2.zero, moveSmoothing);
+            inputReader.SetMediaPipeMove(Vector2.zero);
             return;
         }
 
         var leftShoulder = landmarks.landmarks[PoseLeftShoulder];
         var rightShoulder = landmarks.landmarks[PoseRightShoulder];
-        var leftHip = landmarks.landmarks[PoseLeftHip];
-        var rightHip = landmarks.landmarks[PoseRightHip];
+        var nose = landmarks.landmarks[PoseNose];
 
         // Center of upper body in normalized image space [0,1]
         float centerX = (leftShoulder.x + rightShoulder.x) * 0.5f;
-        float hipY = (leftHip.y + rightHip.y) * 0.5f;
+        // Use face/nose Y so nodding or moving your head up/down maps to ship vertical movement.
+        float faceY = nose.y;
 
-        // Map normalized to -1..1 with tunable sensitivity
-        float moveX = Mathf.Clamp((centerX - 0.5f) / Mathf.Max(0.0001f, horizontalSensitivity), -1f, 1f);
-        float moveY = Mathf.Clamp((0.5f - hipY) / Mathf.Max(0.0001f, verticalSensitivity), -1f, 1f);
+        // Convert to normalized "screen-space" position (0..1 on each axis).
+        // X is left (0) to right (1) of the image.
+        float normX = Mathf.Clamp01(centerX);
+        // MediaPipe Y grows downward; flip so 0 = bottom, 1 = top in game space.
+        float normY = Mathf.Clamp01(1f - faceY);
 
-        var targetMove = new Vector2(moveX, moveY);
-        _currentMove = Vector2.Lerp(_currentMove, targetMove, moveSmoothing > 0f ? moveSmoothing : 1f);
+        // Store face "target position" (0..1) in Move; the player controller
+        // will convert this into a movement vector toward that position.
+        var faceScreenPos = new Vector2(normX, normY);
+        inputReader.SetMediaPipeMove(faceScreenPos);
     }
 
     private void HandleHandResult(HandLandmarkerResult result)
     {
+        if (inputReader == null) return;
+
         // HandLandmarkerResult is a struct; check the internal list instead
         if (result.handLandmarks == null || result.handLandmarks.Count == 0)
         {
+            // No hand – keep last aim; you can set zero here if you prefer.
             return;
         }
 
@@ -167,8 +164,8 @@ public class MediaPipeInputBridge : MonoBehaviour
         float screenX = normX * Screen.width;
         float screenY = (1f - normY) * Screen.height; // flip Y to match Unity screen coords
 
+        // Write raw aim (no smoothing) straight into the game input.
         var targetAim = new Vector2(screenX, screenY);
-        _currentAim = Vector2.Lerp(_currentAim, targetAim, aimSmoothing > 0f ? aimSmoothing : 1f);
+        inputReader.SetMediaPipeAim(targetAim);
     }
 }
-
