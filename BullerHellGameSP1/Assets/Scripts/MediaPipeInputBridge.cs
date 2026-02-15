@@ -3,24 +3,19 @@ using BulletHell;
 
 using Mediapipe;
 using Mediapipe.Tasks.Vision.PoseLandmarker;
-using Mediapipe.Tasks.Vision.HandLandmarker;
 using Mediapipe.Tasks.Components.Containers;
 using Mediapipe.Unity.Sample.PoseLandmarkDetection;
-using Mediapipe.Unity.Sample.HandLandmarkDetection;
 
 /// <summary>
 /// Bridges MediaPipe Unity Plugin results into the existing Bullet Hell input system.
 /// Control mapping:
-/// - Depth (pose world Z): far = up, near = down (vertical movement).
-/// - Position (body, not hand): horizontal pose center drives roll (left = roll left, right = roll right).
-/// - Aim: right hand only, using wrist (root node) as aim point.
+/// - Movement: Direct 1:1 mapping - plane position matches nose position on screen (X and Y).
+/// - Aim: Right wrist from pose detection (fallback to left wrist if right not available).
 ///
-/// Depth in MediaPipe Unity: there is no separate "depth detection" API. Depth comes from landmark Z:
-/// - Pose: poseWorldLandmarks give 3D world coords in meters (origin at hip); smaller Z = closer to camera.
-/// - Hand: normalized hand landmarks have Z relative to wrist (not metric depth).
-/// For vertical we use pose world Z (e.g. nose) so lean forward = down, lean back = up.
-///
-/// Pose vs face for aiming: use hand (wrist/root) for aim; pose/face are better for body position and gaze.
+/// Position mapping:
+/// - Nose X position (0=left, 1=right) → Plane X position (0=left, 1=right)
+/// - Nose Y position (0=top, 1=bottom) → Plane Y position (1=top, 0=bottom, inverted)
+/// The plane's screen position exactly follows where your nose is on the camera view.
 /// </summary>
 public class MediaPipeInputBridge : MonoBehaviour
 {
@@ -29,29 +24,18 @@ public class MediaPipeInputBridge : MonoBehaviour
 
     [Header("MediaPipe Runners (optional – auto-found if left empty)")]
     [SerializeField] private PoseLandmarkerRunner poseRunner;
-    [SerializeField] private HandLandmarkerRunner handRunner;
 
-    [Header("Movement Tuning")]
-    [Tooltip("Horizontal: body center X (0=left, 1=right). Also drives roll (position left = roll left).")]
-    [SerializeField] private float horizontalSensitivity = 0.2f;
-
-    [Tooltip("Depth → vertical: pose world Z. Far (larger Z) = up, near (smaller Z) = down. Neutral Z for center.")]
-    [SerializeField] private float depthNeutralZ = 0f;
-    [Tooltip("Scale for depth→vertical. Pose Z is in meters (~-0.2 to 0.2); higher = more response.")]
-    [SerializeField] private float depthToVerticalScale = 8f;
-
-    // MediaPipe landmark indices (see MediaPipe Pose & Hands docs)
+    // MediaPipe landmark indices (see MediaPipe Pose docs)
     private const int PoseNose = 0;
-    private const int PoseLeftShoulder = 11;
-    private const int PoseRightShoulder = 12;
-    private const int PoseLeftHip = 23;
-    private const int PoseRightHip = 24;
+    private const int PoseLeftWrist = 15;
+    private const int PoseRightWrist = 16;
 
-    /// <summary>Hand root node (wrist) for aiming; index 0 in hand landmarks.</summary>
-    private const int HandWrist = 0;
-
-    private static bool _hasWarnedNoHandRunner;
     private static bool _hasWarnedNoPoseRunner;
+
+    // Track previous nose position to calculate input velocity for tilting
+    private Vector2 _previousNosePosition = new Vector2(0.5f, 0.5f);
+    private bool _hasInitializedNosePosition = false;
+    private float _cachedDeltaTime = 0.016f; // Cache deltaTime from main thread (default ~60fps)
 
     private void Awake()
     {
@@ -62,22 +46,14 @@ public class MediaPipeInputBridge : MonoBehaviour
             poseRunner = FindObjectOfType<PoseLandmarkerRunner>(true);
         if (poseRunner == null && !_hasWarnedNoPoseRunner)
         {
-            Debug.LogWarning("MediaPipeInputBridge: No PoseLandmarkerRunner found in scene. Movement/depth won't work. Add a Solution with Pose Landmark Detection.");
+            Debug.LogWarning("MediaPipeInputBridge: No PoseLandmarkerRunner found in scene. Movement and aim won't work. Add a Solution with Pose Landmark Detection.");
             _hasWarnedNoPoseRunner = true;
-        }
-
-        if (handRunner == null)
-            handRunner = FindObjectOfType<HandLandmarkerRunner>(true);
-        if (handRunner == null && !_hasWarnedNoHandRunner)
-        {
-            Debug.LogWarning("MediaPipeInputBridge: No HandLandmarkerRunner found in scene. Aim won't follow hand. Add a Solution with Hand Landmark Detection (or a scene that runs both Pose + Hand).");
-            _hasWarnedNoHandRunner = true;
         }
 
         if (inputReader != null)
         {
             inputReader.useMediaPipeInput = true;
-            // Default aim to screen center so AimPoint isn't stuck at (0,0) when no hand data yet.
+            // Default aim to screen center so AimPoint isn't stuck at (0,0) when no wrist data yet.
             inputReader.SetMediaPipeAim(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f));
         }
     }
@@ -88,11 +64,6 @@ public class MediaPipeInputBridge : MonoBehaviour
         {
             poseRunner.OnPoseResult += HandlePoseResult;
         }
-
-        if (handRunner != null)
-        {
-            handRunner.OnHandResult += HandleHandResult;
-        }
     }
 
     private void OnDisable()
@@ -101,16 +72,14 @@ public class MediaPipeInputBridge : MonoBehaviour
         {
             poseRunner.OnPoseResult -= HandlePoseResult;
         }
-
-        if (handRunner != null)
-        {
-            handRunner.OnHandResult -= HandleHandResult;
-        }
     }
 
     private void Update()
     {
         if (inputReader == null) return;
+
+        // Cache deltaTime from main thread for use in background callback
+        _cachedDeltaTime = Time.deltaTime;
 
         // For now we don't control fire; can be added later via gesture.
         inputReader.SetMediaPipeFire(false);
@@ -127,100 +96,67 @@ public class MediaPipeInputBridge : MonoBehaviour
         }
 
         var landmarks = result.poseLandmarks[0];
-        if (landmarks.landmarks == null || landmarks.landmarks.Count <= PoseRightHip)
+        if (landmarks.landmarks == null || landmarks.landmarks.Count <= PoseRightWrist)
         {
             inputReader.SetMediaPipeMove(Vector2.zero);
             return;
         }
 
-        var leftShoulder = landmarks.landmarks[PoseLeftShoulder];
-        var rightShoulder = landmarks.landmarks[PoseRightShoulder];
         var nose = landmarks.landmarks[PoseNose];
 
-        // Position (body, not hand): center X for horizontal and roll (left = roll left, right = roll right).
-        float centerX = (leftShoulder.x + rightShoulder.x) * 0.5f;
-        float normX = Mathf.Clamp01(centerX);
+        // Direct 1:1 mapping: plane position matches nose position on screen
+        // MediaPipe coordinates: X: 0=left, 1=right; Y: 0=top, 1=bottom
+        // Unity expects: X: 0=left, 1=right; Y: 0=bottom, 1=top (inverted)
+        float normX = Mathf.Clamp01(nose.x);
+        float normY = Mathf.Clamp01(1f - nose.y); // Invert Y: nose at top (0) → plane at top (1)
 
-        // Depth → vertical: far = up, near = down. Use pose world Z when available.
-        float normY = 0.5f;
-        bool usedWorldZ = false;
-        if (result.poseWorldLandmarks != null && result.poseWorldLandmarks.Count > 0)
+        // Calculate input velocity (change in nose position) for tilting
+        Vector2 currentNosePos = new Vector2(normX, normY);
+        Vector2 inputVelocity = Vector2.zero;
+
+        if (_hasInitializedNosePosition)
         {
-            var worldList = result.poseWorldLandmarks[0];
-            if (worldList.landmarks != null && worldList.landmarks.Count > PoseNose)
-            {
-                // Pose world: smaller Z = closer (near), larger Z = farther (far). Z is in meters.
-                float noseZ = worldList.landmarks[PoseNose].z;
-                normY = 0.5f + depthToVerticalScale * (noseZ - depthNeutralZ);
-                normY = Mathf.Clamp01(normY);
-                usedWorldZ = true;
-            }
+            // Calculate delta position (change from last frame)
+            // Use cached deltaTime since this callback runs on background thread
+            inputVelocity = (currentNosePos - _previousNosePosition) / _cachedDeltaTime;
+            // Normalize to roughly -1 to 1 range (assuming typical head movement speed)
+            inputVelocity *= 2f; // Scale factor to match typical input range
         }
-        if (!usedWorldZ)
+        else
         {
-            // Fallback: nose Y in image — head higher in frame = move up.
-            normY = Mathf.Clamp01(1f - nose.y);
+            _hasInitializedNosePosition = true;
         }
+
+        _previousNosePosition = currentNosePos;
 
         inputReader.SetMediaPipeMove(new Vector2(normX, normY));
-    }
+        inputReader.SetMediaPipeInputVelocity(inputVelocity);
 
-    private void HandleHandResult(HandLandmarkerResult result)
-    {
-        if (inputReader == null) return;
+        // Aiming using wrist position (prefer right wrist, fallback to left)
+        if (landmarks.landmarks.Count > PoseRightWrist)
+        {
+            var rightWrist = landmarks.landmarks[PoseRightWrist];
+            var leftWrist = landmarks.landmarks[PoseLeftWrist];
 
-        if (result.handLandmarks == null || result.handLandmarks.Count == 0)
+            // Check which wrist is more visible (higher visibility score means more confident detection)
+            bool useRightWrist = rightWrist.visibility > leftWrist.visibility;
+            var wrist = useRightWrist ? rightWrist : leftWrist;
+
+            // Convert normalized wrist position to screen coordinates
+            float wristNormX = Mathf.Clamp01(wrist.x);
+            float wristNormY = Mathf.Clamp01(wrist.y);
+
+            float screenX = wristNormX * Screen.width;
+            float screenY = (1f - wristNormY) * Screen.height; // Flip Y to match Unity screen coords
+
+            inputReader.SetMediaPipeAim(new Vector2(screenX, screenY));
+            Debug.Log($"[MediaPipe] Nose: ({nose.x:F3}, {nose.y:F3}) → Move: ({normX:F3}, {normY:F3}), Aim: ({screenX:F1}, {screenY:F1}) [{(useRightWrist ? "R" : "L")} wrist]");
+        }
+        else
         {
             SetAimToScreenCenter();
-            return;
+            Debug.Log($"[MediaPipe] Nose: ({nose.x:F3}, {nose.y:F3}) → Move: ({normX:F3}, {normY:F3}), Aim: center (no wrist)");
         }
-
-        // Prefer right hand for aim; fallback to left so either hand works.
-        int aimHandIndex = -1;
-        if (result.handedness != null && result.handedness.Count == result.handLandmarks.Count)
-        {
-            for (int i = 0; i < result.handedness.Count; i++)
-            {
-                if (result.handedness[i].categories == null || result.handedness[i].categories.Count == 0) continue;
-                string label = result.handedness[i].categories[0].categoryName;
-                if (string.Equals(label, "Right", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    aimHandIndex = i;
-                    break;
-                }
-            }
-            if (aimHandIndex < 0)
-            {
-                for (int i = 0; i < result.handedness.Count; i++)
-                {
-                    if (result.handedness[i].categories == null || result.handedness[i].categories.Count == 0) continue;
-                    string label = result.handedness[i].categories[0].categoryName;
-                    if (string.Equals(label, "Left", System.StringComparison.OrdinalIgnoreCase))
-                    {
-                        aimHandIndex = i;
-                        break;
-                    }
-                }
-            }
-        }
-        if (aimHandIndex < 0)
-            aimHandIndex = 0;
-
-        var handLandmarks = result.handLandmarks[aimHandIndex];
-        if (handLandmarks.landmarks == null || handLandmarks.landmarks.Count <= HandWrist)
-        {
-            SetAimToScreenCenter();
-            return;
-        }
-
-        var wrist = handLandmarks.landmarks[HandWrist];
-        float normX = Mathf.Clamp01(wrist.x);
-        float normY = Mathf.Clamp01(wrist.y);
-
-        float screenX = normX * Screen.width;
-        float screenY = (1f - normY) * Screen.height; // flip Y to match Unity screen coords
-
-        inputReader.SetMediaPipeAim(new Vector2(screenX, screenY));
     }
 
     private void SetAimToScreenCenter()

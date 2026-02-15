@@ -46,6 +46,7 @@ namespace BulletHell
         private Vector3 velocity;
         private Vector3 targetOffset;
         private float currentRoll;
+        private Vector2 currentMoveVector; // Current frame's movement direction
 
         // Public property to expose current speed magnitude
         public float CurrentSpeed => velocity.magnitude;
@@ -119,6 +120,9 @@ namespace BulletHell
                     moveVector = Vector2.ClampMagnitude(toTarget, 1f);
                 }
 
+                // Store for tilting
+                currentMoveVector = moveVector;
+
                 // 4. Apply the move vector exactly like other inputs do.
                 targetOffset.x += moveVector.x * movementSpeed * Time.deltaTime;
                 targetOffset.y += moveVector.y * movementSpeed * Time.deltaTime;
@@ -129,6 +133,8 @@ namespace BulletHell
             {
                 // Traditional controls: Move is a direct input vector (stick/keys)
                 // that we integrate over time.
+                currentMoveVector = input.Move; // Store for tilting
+
                 targetOffset.x += input.Move.x * movementSpeed * Time.deltaTime;
                 targetOffset.y += input.Move.y * movementSpeed * Time.deltaTime;
                 targetOffset.x = Mathf.Clamp(targetOffset.x, -movementLimit.x, movementLimit.x);
@@ -151,7 +157,18 @@ namespace BulletHell
             transform.rotation = Quaternion.LookRotation(followTarget.forward, Vector3.up);
             if (playerModel != null)
             {
-                currentRoll = Mathf.Lerp(currentRoll, -input.Move.x * maxRoll, Time.deltaTime * rotationSmoothness);
+                // Calculate tilt based on move vector (intended movement direction)
+                // Move vector is already normalized to -1 to 1 range
+                float moveVectorX = currentMoveVector.x;
+
+                // Apply deadzone - if moving very slowly, stabilize to zero roll
+                const float deadzone = 0.05f;
+                if (Mathf.Abs(moveVectorX) < deadzone)
+                    moveVectorX = 0f;
+
+                // Calculate target roll - INVERTED (negative sign)
+                float targetRoll = -moveVectorX * maxRoll;
+                currentRoll = Mathf.Lerp(currentRoll, targetRoll, Time.deltaTime * rotationSmoothness);
                 playerModel.localRotation = Quaternion.Euler(0f, 0f, currentRoll);
             }
         }

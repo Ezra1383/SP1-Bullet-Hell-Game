@@ -34,9 +34,9 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
     public Tasks.Vision.Core.RunningMode RunningMode { get; set; } = Tasks.Vision.Core.RunningMode.LIVE_STREAM;
 
     public int NumPoses { get; set; } = 1;
-    public float MinPoseDetectionConfidence { get; set; } = 0.5f;
-    public float MinPosePresenceConfidence { get; set; } = 0.5f;
-    public float MinTrackingConfidence { get; set; } = 0.5f;
+    public float MinPoseDetectionConfidence { get; set; } = 0.1f;
+    public float MinPosePresenceConfidence { get; set; } = 0.1f;
+    public float MinTrackingConfidence { get; set; } = 0.1f;
     public bool OutputSegmentationMasks { get; set; } = false;
     public string ModelName => Model.GetDescription() ?? Model.ToString();
     public string ModelPath

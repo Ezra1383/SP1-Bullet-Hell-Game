@@ -8,7 +8,9 @@ namespace BulletHell
     {
         [Header("Stats")]
         [SerializeField] private int health = 3;
+#pragma warning disable 0414 // Field assigned but never used - reserved for future scoring system
         [SerializeField] private int scoreValue = 100;
+#pragma warning restore 0414
         [SerializeField] private float stopDistance = 30f; // Stop this distance from player
 
         [Header("Shooting")]

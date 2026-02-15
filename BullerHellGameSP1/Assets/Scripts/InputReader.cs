@@ -27,6 +27,7 @@ namespace BulletHell
         private Vector2 _mediaPipeMove;
         private Vector2 _mediaPipeAim;
         private bool _mediaPipeFire;
+        private Vector2 _mediaPipeInputVelocity; // Delta/velocity of input (not plane movement)
 
         // Public properties
         public Vector2 Move
@@ -59,6 +60,17 @@ namespace BulletHell
         public void SetMediaPipeMove(Vector2 move) => _mediaPipeMove = move;
         public void SetMediaPipeAim(Vector2 aim) => _mediaPipeAim = aim;
         public void SetMediaPipeFire(bool fire) => _mediaPipeFire = fire;
+        public void SetMediaPipeInputVelocity(Vector2 velocity) => _mediaPipeInputVelocity = velocity;
+
+        // Property to get input velocity (for tilting based on input changes, not plane physics)
+        public Vector2 InputVelocity
+        {
+            get
+            {
+                if (useMediaPipeInput) return _mediaPipeInputVelocity;
+                return Move; // For keyboard/gamepad, Move is already a velocity/direction
+            }
+        }
 
         void Awake()
         {
