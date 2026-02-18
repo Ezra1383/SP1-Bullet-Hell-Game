@@ -9,6 +9,7 @@ TagManager:
   - Actors
   - SpaceObject
   - Enemy
+  - Global Resource
   layers:
   - Default
   - TransparentFX
@@ -19,7 +20,7 @@ TagManager:
   - Gameplay
   - Projectiles
   - IgnoreBullets
-  - 
+  - BackGroundShips
   - 
   - 
   - 

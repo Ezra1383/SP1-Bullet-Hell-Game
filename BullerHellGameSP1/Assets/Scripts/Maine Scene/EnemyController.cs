@@ -205,8 +205,10 @@ namespace BulletHell
 
         void Die()
         {
-            // Add score, spawn powerups, particles, etc.
-            // GameManager.Instance.AddScore(scoreValue);
+            if (BulletHell.ScoreManager.Instance != null)
+            {
+                BulletHell.ScoreManager.Instance.AddScore(scoreValue);
+            }
             ReturnToPool();
         }
 

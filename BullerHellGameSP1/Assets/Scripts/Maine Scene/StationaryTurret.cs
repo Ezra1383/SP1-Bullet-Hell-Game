@@ -17,6 +17,8 @@ namespace BulletHell
     {
         [Header("Base Stats")]
         [SerializeField] private int health = 15;
+        [Tooltip("Points awarded when this turret is destroyed")]
+        [SerializeField] private int scoreValue = 250;
         [SerializeField] private float detectionRadius = 400f;
         [SerializeField] private float rotationSpeed = 5f;
 
@@ -94,7 +96,11 @@ namespace BulletHell
 
         private void Die()
         {
-            // You can add a big explosion here!
+            if (ScoreManager.Instance != null)
+            {
+                ScoreManager.Instance.AddScore(scoreValue);
+            }
+
             Destroy(gameObject);
         }
 
