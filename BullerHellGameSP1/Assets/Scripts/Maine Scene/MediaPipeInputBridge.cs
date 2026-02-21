@@ -85,7 +85,8 @@ public class MediaPipeInputBridge : MonoBehaviour
         _cachedScreenWidth = Screen.width;
         _cachedScreenHeight = Screen.height;
 
-        inputReader.SetMediaPipeFire(true);
+        // Fire is driven by WeaponSystem when using "fire only when on target" (aim ray hits enemy)
+        inputReader.SetMediaPipeFire(false);
     }
 
     private void HandlePoseResult(PoseLandmarkerResult result)
@@ -113,17 +114,16 @@ public class MediaPipeInputBridge : MonoBehaviour
         float normX = Mathf.Clamp01(nose.x);
         float normY = Mathf.Clamp01(1f - nose.y); // Invert Y: nose at top (0) → plane at top (1)
 
-        // Calculate input velocity (change in nose position) for tilting
+        // Calculate input velocity (change in nose position) for banking
         Vector2 currentNosePos = new Vector2(normX, normY);
         Vector2 inputVelocity = Vector2.zero;
 
         if (_hasInitializedNosePosition)
         {
-            // Calculate delta position (change from last frame)
-            // Use cached deltaTime since this callback runs on background thread
-            inputVelocity = (currentNosePos - _previousNosePosition) / _cachedDeltaTime;
-            // Normalize to roughly -1 to 1 range (assuming typical head movement speed)
-            inputVelocity *= 2f; // Scale factor to match typical input range
+            float dt = Mathf.Max(_cachedDeltaTime, 0.001f);
+            inputVelocity = (currentNosePos - _previousNosePosition) / dt;
+            // Scale so typical head movement gives roughly -1..1 for roll feel
+            inputVelocity *= 2f;
         }
         else
         {
@@ -148,12 +148,10 @@ public class MediaPipeInputBridge : MonoBehaviour
             float screenY = (1f - wristNormY) * _cachedScreenHeight; // Flip Y to match Unity screen coords
 
             inputReader.SetMediaPipeAim(new Vector2(screenX, screenY));
-            Debug.Log($"[MediaPipe] Nose: ({nose.x:F3}, {nose.y:F3}) → Move: ({normX:F3}, {normY:F3}), Aim: ({screenX:F1}, {screenY:F1}) [L wrist]");
         }
         else
         {
             SetAimToScreenCenter();
-            Debug.Log($"[MediaPipe] Nose: ({nose.x:F3}, {nose.y:F3}) → Move: ({normX:F3}, {normY:F3}), Aim: center (no wrist)");
         }
     }
 

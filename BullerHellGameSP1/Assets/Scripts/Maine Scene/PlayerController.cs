@@ -32,6 +32,14 @@ namespace BulletHell
         [Header("Banking Settings")]
         [SerializeField] private float maxRoll = 60f;
         [SerializeField] private float rotationSmoothness = 10f;
+        [Tooltip("MediaPipe only: bank from movement velocity (direction nose is moving) instead of position. Smoother and more natural.")]
+        [SerializeField] private bool bankFromVelocity = true;
+        [Tooltip("MediaPipe only: how much horizontal velocity translates to roll. Tune so moving your head feels right.")]
+        [SerializeField] private float velocityToRollGain = 0.5f;
+        [Tooltip("MediaPipe only: velocity below this is treated as zero so the ship levels out when still.")]
+        [SerializeField] private float velocityDeadzone = 0.3f;
+        [Tooltip("MediaPipe only: smoothing of velocity before converting to roll. Higher = smoother, less jitter.")]
+        [SerializeField] private float velocitySmoothTime = 0.08f;
 
         [Header("Turret Settings")]
         [SerializeField] private Transform leftTurretPivot;
@@ -46,6 +54,7 @@ namespace BulletHell
         private Vector3 velocity;
         private Vector3 targetOffset;
         private float currentRoll;
+        private float smoothedVelocityX; // For MediaPipe velocity-based banking
 
         // Public property to expose current speed magnitude
         public float CurrentSpeed => velocity.magnitude;
@@ -151,16 +160,32 @@ namespace BulletHell
             transform.rotation = Quaternion.LookRotation(followTarget.forward, Vector3.up);
             if (playerModel != null)
             {
-                // Direct tilt from input
                 float tiltInput;
                 if (input.useMediaPipeInput)
                 {
-                    // MediaPipe: input.Move.x is 0-1, convert to -1 to 1 for tilt
-                    tiltInput = (input.Move.x - 0.5f) * 2f;
+                    if (bankFromVelocity)
+                    {
+                        // Bank from movement direction: ship tilts in the direction your nose is moving,
+                        // levels out when still. Much more consistent than position-based banking.
+                        float rawVelocityX = input.InputVelocity.x * velocityToRollGain;
+                        float dt = Time.deltaTime;
+                        float smoothFactor = velocitySmoothTime > 0f ? Mathf.Clamp01(dt / velocitySmoothTime) : 1f;
+                        smoothedVelocityX = Mathf.Lerp(smoothedVelocityX, rawVelocityX, smoothFactor);
+
+                        // Deadzone: treat small velocity as zero so ship levels out when head is still
+                        if (Mathf.Abs(smoothedVelocityX) < velocityDeadzone)
+                            smoothedVelocityX = Mathf.MoveTowards(smoothedVelocityX, 0f, (1f / velocitySmoothTime) * dt);
+
+                        tiltInput = Mathf.Clamp(smoothedVelocityX, -1f, 1f);
+                    }
+                    else
+                    {
+                        // Legacy: position-based (nose X 0–1 → -1 to 1)
+                        tiltInput = (input.Move.x - 0.5f) * 2f;
+                    }
                 }
                 else
                 {
-                    // Keyboard/gamepad: input.Move.x is already -1 to 1
                     tiltInput = input.Move.x;
                 }
 
