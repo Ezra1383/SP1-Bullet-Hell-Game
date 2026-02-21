@@ -35,6 +35,9 @@ namespace BulletHell
         [Tooltip("How long the ship exists before self-destructing")]
         [SerializeField] private float lifetime = 10f;
 
+        [Header("Death")]
+        [SerializeField] private GameObject explosion;
+
         private float nextFireTime;
         private float destroyTime;
 
@@ -84,6 +87,8 @@ namespace BulletHell
             // Self-destruct after lifetime expires
             if (Time.time >= destroyTime)
             {
+                if (explosion != null)
+                    Instantiate(explosion, transform.position, transform.rotation);
                 Destroy(gameObject);
             }
         }

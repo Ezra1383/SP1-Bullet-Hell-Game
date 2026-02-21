@@ -10,7 +10,7 @@ using Mediapipe.Unity.Sample.PoseLandmarkDetection;
 /// Bridges MediaPipe Unity Plugin results into the existing Bullet Hell input system.
 /// Control mapping:
 /// - Movement: Direct 1:1 mapping - plane position matches nose position on screen (X and Y).
-/// - Aim: Right wrist from pose detection (fallback to left wrist if right not available).
+/// - Aim: Left wrist from pose detection only.
 ///
 /// Position mapping:
 /// - Nose X position (0=left, 1=right) → Plane X position (0=left, 1=right)
@@ -36,6 +36,8 @@ public class MediaPipeInputBridge : MonoBehaviour
     private Vector2 _previousNosePosition = new Vector2(0.5f, 0.5f);
     private bool _hasInitializedNosePosition = false;
     private float _cachedDeltaTime = 0.016f; // Cache deltaTime from main thread (default ~60fps)
+    private float _cachedScreenWidth = 1920f;  // Cache screen dimensions from main thread
+    private float _cachedScreenHeight = 1080f;
 
     private void Awake()
     {
@@ -78,11 +80,12 @@ public class MediaPipeInputBridge : MonoBehaviour
     {
         if (inputReader == null) return;
 
-        // Cache deltaTime from main thread for use in background callback
+        // Cache main-thread-only values for use in background callback
         _cachedDeltaTime = Time.deltaTime;
+        _cachedScreenWidth = Screen.width;
+        _cachedScreenHeight = Screen.height;
 
-        // For now we don't control fire; can be added later via gesture.
-        inputReader.SetMediaPipeFire(false);
+        inputReader.SetMediaPipeFire(true);
     }
 
     private void HandlePoseResult(PoseLandmarkerResult result)
@@ -132,25 +135,20 @@ public class MediaPipeInputBridge : MonoBehaviour
         inputReader.SetMediaPipeMove(new Vector2(normX, normY));
         inputReader.SetMediaPipeInputVelocity(inputVelocity);
 
-        // Aiming using wrist position (prefer right wrist, fallback to left)
-        if (landmarks.landmarks.Count > PoseRightWrist)
+        // Aiming using left wrist position only
+        if (landmarks.landmarks.Count > PoseLeftWrist)
         {
-            var rightWrist = landmarks.landmarks[PoseRightWrist];
             var leftWrist = landmarks.landmarks[PoseLeftWrist];
 
-            // Check which wrist is more visible (higher visibility score means more confident detection)
-            bool useRightWrist = rightWrist.visibility > leftWrist.visibility;
-            var wrist = useRightWrist ? rightWrist : leftWrist;
-
             // Convert normalized wrist position to screen coordinates
-            float wristNormX = Mathf.Clamp01(wrist.x);
-            float wristNormY = Mathf.Clamp01(wrist.y);
+            float wristNormX = Mathf.Clamp01(leftWrist.x);
+            float wristNormY = Mathf.Clamp01(leftWrist.y);
 
-            float screenX = wristNormX * Screen.width;
-            float screenY = (1f - wristNormY) * Screen.height; // Flip Y to match Unity screen coords
+            float screenX = wristNormX * _cachedScreenWidth;
+            float screenY = (1f - wristNormY) * _cachedScreenHeight; // Flip Y to match Unity screen coords
 
             inputReader.SetMediaPipeAim(new Vector2(screenX, screenY));
-            Debug.Log($"[MediaPipe] Nose: ({nose.x:F3}, {nose.y:F3}) → Move: ({normX:F3}, {normY:F3}), Aim: ({screenX:F1}, {screenY:F1}) [{(useRightWrist ? "R" : "L")} wrist]");
+            Debug.Log($"[MediaPipe] Nose: ({nose.x:F3}, {nose.y:F3}) → Move: ({normX:F3}, {normY:F3}), Aim: ({screenX:F1}, {screenY:F1}) [L wrist]");
         }
         else
         {
@@ -162,6 +160,6 @@ public class MediaPipeInputBridge : MonoBehaviour
     private void SetAimToScreenCenter()
     {
         if (inputReader != null)
-            inputReader.SetMediaPipeAim(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f));
+            inputReader.SetMediaPipeAim(new Vector2(_cachedScreenWidth * 0.5f, _cachedScreenHeight * 0.5f));
     }
 }

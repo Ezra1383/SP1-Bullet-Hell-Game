@@ -40,7 +40,7 @@ namespace BulletHell
 
         [Header("Aim Settings")]
         [SerializeField] private Camera mainCamera;
-        [SerializeField] private float aimDistance = 1000f; // Default distance if raycast hits nothing
+        [SerializeField] private float aimDistance = 100f; // Default distance if raycast hits nothing
         [SerializeField] private LayerMask aimLayerMask = ~0; // What layers to raycast against
 
         private Vector3 velocity;

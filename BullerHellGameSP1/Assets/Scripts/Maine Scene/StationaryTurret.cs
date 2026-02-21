@@ -26,6 +26,9 @@ namespace BulletHell
         [SerializeField] private GameObject bulletPrefab;
         [SerializeField] private List<CannonBattery> cannons = new List<CannonBattery>();
 
+        [Header("Death")]
+        [SerializeField] private GameObject explosion;
+
         private Transform playerTarget;
 
         void Start()
@@ -99,6 +102,11 @@ namespace BulletHell
             if (ScoreManager.Instance != null)
             {
                 ScoreManager.Instance.AddScore(scoreValue);
+            }
+
+            if (explosion != null)
+            {
+                Instantiate(explosion, transform.position, transform.rotation);
             }
 
             Destroy(gameObject);

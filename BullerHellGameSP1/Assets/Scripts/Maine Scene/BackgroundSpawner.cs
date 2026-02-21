@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Splines;
 using System.Collections.Generic;
 
 namespace BulletHell
@@ -21,6 +22,9 @@ namespace BulletHell
 
         [Tooltip("Maximum number of background ships that can exist at once")]
         [SerializeField] private int maxActiveShips = 10;
+
+        [Tooltip("How many ships to spawn each interval")]
+        [SerializeField] private int spawnCountPerInterval = 1;
 
         [Header("Spawn Area")]
         [Tooltip("Minimum bounds for spawn positions (relative to this spawner)")]
@@ -53,6 +57,19 @@ namespace BulletHell
 
         [Tooltip("Offset from player position when following")]
         [SerializeField] private Vector3 playerOffset = new Vector3(0f, 0f, 50f);
+
+        [Tooltip("Assign the Main Camera here so the spawn area rotates with the camera view")]
+        [SerializeField] private Transform orientTarget;
+
+        [Header("Spline Distance")]
+        [Tooltip("Assign the same SplineContainer used by the enemy spawner")]
+        [SerializeField] private SplineContainer splineContainer;
+
+        [Tooltip("Assign the SplineAnimate component on the rail follower")]
+        [SerializeField] private SplineAnimate splineAnimate;
+
+        [Tooltip("Distance ahead of the player along the spline (in world units) where the spawn zone is placed. Set 0 to use the flat playerOffset instead.")]
+        [SerializeField] private float spawnDistance = 0f;
 
         private float nextSpawnTime;
         private Transform playerTarget;
@@ -92,16 +109,39 @@ namespace BulletHell
             // Follow player if enabled
             if (followPlayer && playerTarget != null)
             {
-                transform.position = playerTarget.position + playerOffset;
+                if (orientTarget != null)
+                    transform.rotation = orientTarget.rotation;
+
+                if (spawnDistance > 0f && splineContainer != null && splineAnimate != null)
+                {
+                    // Place the spawn zone at a fixed distance ahead along the spline
+                    Spline spline = splineContainer.Spline;
+                    float splineLength = spline.GetLength();
+                    float playerT = splineAnimate.NormalizedTime;
+                    float targetT = playerT + (spawnDistance / splineLength);
+                    if (targetT > 1f) targetT -= Mathf.Floor(targetT);
+
+                    var splinePos = spline.EvaluatePosition(targetT);
+                    transform.position = splineContainer.transform.TransformPoint((Vector3)splinePos);
+                }
+                else
+                {
+                    // Fallback: flat offset in local space
+                    transform.position = playerTarget.position + transform.TransformDirection(playerOffset);
+                }
             }
 
             // Clean up destroyed ships from active list
             activeShips.RemoveAll(ship => ship == null);
 
-            // Spawn new ship if it's time and we haven't hit the limit
+            // Spawn new ships if it's time and we haven't hit the limit
             if (Time.time >= nextSpawnTime && activeShips.Count < maxActiveShips)
             {
-                SpawnBackgroundShip();
+                for (int i = 0; i < spawnCountPerInterval; i++)
+                {
+                    if (activeShips.Count >= maxActiveShips) break;
+                    SpawnBackgroundShip();
+                }
                 ScheduleNextSpawn();
             }
         }
@@ -137,12 +177,13 @@ namespace BulletHell
                 Quaternion.identity
             );
 
-            // Initialize ship
+            // Initialize ship - rotate movement vector to match camera orientation
             BackgroundShip shipScript = ship.GetComponent<BackgroundShip>();
             if (shipScript != null)
             {
                 float randomSpeed = Random.Range(minShipSpeed, maxShipSpeed);
-                shipScript.Initialize(movementVector, randomSpeed);
+                Vector3 worldMovement = transform.TransformDirection(movementVector);
+                shipScript.Initialize(worldMovement, randomSpeed);
             }
 
             // Add to active ships list

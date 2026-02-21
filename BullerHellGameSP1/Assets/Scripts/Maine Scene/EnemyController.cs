@@ -18,6 +18,7 @@ namespace BulletHell
         [SerializeField] private Transform firePoint;
         [SerializeField] private float fireRate = 1f;
         [SerializeField] private bool canShoot = true;
+        [SerializeField] private GameObject Explosion;
 
         private SplineContainer splineContainer;
         private Spline spline;
@@ -208,6 +209,10 @@ namespace BulletHell
             if (BulletHell.ScoreManager.Instance != null)
             {
                 BulletHell.ScoreManager.Instance.AddScore(scoreValue);
+            }
+            if (Explosion != null)
+            {
+                Instantiate(Explosion, transform.position, transform.rotation);
             }
             ReturnToPool();
         }
