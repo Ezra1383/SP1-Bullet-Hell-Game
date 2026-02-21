@@ -16,6 +16,10 @@ namespace BulletHell
         [SerializeField] private Vector3 bulletScale = new Vector3(5, 5, 5);
         [SerializeField] private float aimSpeed = 20f;
         [SerializeField] private bool showDebugRays = false;
+        [Tooltip("When using MediaPipe: only fire when aim ray hits an enemy. Requires enemies to use tag \"Enemy\".")]
+        [SerializeField] private string enemyTag = "Enemy";
+        [SerializeField] private float aimRayDistance = 500f;
+        [SerializeField] private LayerMask aimRayLayerMask = ~0;
 
         private float nextFireTime;
         private int currentFirePointIndex = 0;
@@ -46,10 +50,38 @@ namespace BulletHell
                 }
             }
 
-            if (input.IsFiring && Time.time >= nextFireTime)
+            bool shouldFire = input.useMediaPipeInput
+                ? IsAimOnEnemy(mainCam)
+                : input.IsFiring;
+
+            if (shouldFire && Time.time >= nextFireTime)
             {
                 Fire();
             }
+        }
+
+        /// <summary>
+        /// When using MediaPipe: only fire when the ray from camera through aim target hits an enemy.
+        /// </summary>
+        private bool IsAimOnEnemy(Camera cam)
+        {
+            if (cam == null || aimTarget == null) return false;
+            Vector3 origin = cam.transform.position;
+            Vector3 dir = (aimTarget.position - origin).normalized;
+            Ray ray = new Ray(origin, dir);
+            RaycastHit[] hits = Physics.RaycastAll(ray, aimRayDistance, aimRayLayerMask);
+
+            // Sort by distance and return true if the first valid hit is an enemy
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            foreach (RaycastHit hit in hits)
+            {
+                if (hit.transform == aimTarget || hit.transform.IsChildOf(aimTarget))
+                    continue;
+                if (hit.collider.CompareTag("Player") || hit.collider.CompareTag("PlayerBullet"))
+                    continue;
+                return hit.collider.CompareTag(enemyTag);
+            }
+            return false;
         }
 
         private void Fire()
