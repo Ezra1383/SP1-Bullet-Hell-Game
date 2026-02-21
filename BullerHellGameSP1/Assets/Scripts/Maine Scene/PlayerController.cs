@@ -50,6 +50,8 @@ namespace BulletHell
         [SerializeField] private Camera mainCamera;
         [SerializeField] private float aimDistance = 100f; // Default distance if raycast hits nothing
         [SerializeField] private LayerMask aimLayerMask = ~0; // What layers to raycast against
+        [SerializeField] private float aimTweenDuration = 0.12f;
+        [SerializeField] private Ease aimEase = Ease.OutSine;
 
         private Vector3 velocity;
         private Vector3 targetOffset;
@@ -228,16 +230,10 @@ namespace BulletHell
                 }
             }
 
-            if (closestHit.HasValue)
-            {
-                // Use the closest valid hit
-                aimTarget.position = closestHit.Value.point;
-            }
-            else
-            {
-                // Hit nothing valid - use far distance
-                aimTarget.position = ray.GetPoint(aimDistance);
-            }
+            Vector3 desiredPos = closestHit.HasValue ? closestHit.Value.point : ray.GetPoint(aimDistance);
+
+            aimTarget.DOKill();
+            aimTarget.DOMove(desiredPos, aimTweenDuration).SetEase(aimEase);
         }
 
         private void HandleTurretAiming()
