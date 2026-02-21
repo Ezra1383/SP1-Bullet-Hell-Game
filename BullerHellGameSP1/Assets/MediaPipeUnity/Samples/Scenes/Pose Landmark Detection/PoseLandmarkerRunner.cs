@@ -21,6 +21,18 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
     public readonly PoseLandmarkDetectionConfig config = new PoseLandmarkDetectionConfig();
 
+    private const string MovementTrackingKey = "UseMovementTracking";
+
+    protected override IEnumerator Start()
+    {
+      if (PlayerPrefs.GetInt(MovementTrackingKey, 1) == 0)
+      {
+        enabled = false;
+        yield break;
+      }
+      yield return base.Start();
+    }
+
     public override void Stop()
     {
       base.Stop();

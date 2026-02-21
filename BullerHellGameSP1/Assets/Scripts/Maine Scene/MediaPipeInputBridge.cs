@@ -39,8 +39,16 @@ public class MediaPipeInputBridge : MonoBehaviour
     private float _cachedScreenWidth = 1920f;  // Cache screen dimensions from main thread
     private float _cachedScreenHeight = 1080f;
 
+    private const string MovementTrackingKey = "UseMovementTracking";
+
     private void Awake()
     {
+        if (PlayerPrefs.GetInt(MovementTrackingKey, 1) == 0)
+        {
+            enabled = false;
+            return;
+        }
+
         if (inputReader == null)
             inputReader = FindObjectOfType<InputReader>();
 
