@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.Splines;
 using System.Collections.Generic;
 using Unity.Mathematics;
+using Random = UnityEngine.Random;
 
 namespace BulletHell
 {
@@ -9,44 +10,51 @@ namespace BulletHell
     {
         [Header("References")]
         [SerializeField] private SplineContainer spline;
-        [SerializeField] private Transform splineFollower; // The object moving along spline (your followTarget)
-        [SerializeField] private SplineAnimate splineAnimate; // NEW: Direct reference to SplineAnimate component
+        [SerializeField] private SplineAnimate splineAnimate;
+        [SerializeField] private Transform splineFollower;
 
         [Header("Enemy Prefabs")]
         [SerializeField] private EnemyType[] enemyTypes;
 
-        [Header("Spawn Settings")]
-        [SerializeField] private float spawnDistance = 60f; // Distance ahead of player
+        [Header("Lane Settings")]
+        [SerializeField] private float[] laneOffsets = { -15f, -7.5f, 0f, 7.5f, 15f };
+        [SerializeField] private Vector2 spawnAreaHeight = new Vector2(-8f, 8f);
+        [SerializeField] private float spawnDistance = 60f;
+
+        [Header("Spawn Timing")]
         [SerializeField] private float minSpawnInterval = 0.5f;
         [SerializeField] private float maxSpawnInterval = 2f;
-        [SerializeField] private Vector2 spawnAreaWidth = new Vector2(-15f, 15f); // Left/Right bounds
-        [SerializeField] private Vector2 spawnAreaHeight = new Vector2(-8f, 8f); // Up/Down bounds
 
         [Header("Difficulty Scaling")]
-        [SerializeField] private float difficultyIncreaseRate = 0.1f; // Per minute
+        [SerializeField] private float difficultyIncreaseRate = 1.5f; // per minute - reaches diff 2 in ~40s, diff 10 in ~6 min
         [SerializeField] private float maxDifficulty = 10f;
         [SerializeField] private AnimationCurve difficultySpawnRateCurve = AnimationCurve.Linear(0, 0, 10, 1);
         [SerializeField] private AnimationCurve difficultyEnemyCountCurve = AnimationCurve.Linear(0, 1, 10, 5);
 
-        [Header("Wave Patterns")]
+        [Header("Wave Settings")]
         [SerializeField] private bool useWaveSystem = true;
         [SerializeField] private float waveDuration = 15f;
         [SerializeField] private float waveBreakDuration = 3f;
 
+        // Shared state read by all EnemyControllers - avoids per-enemy spline queries
+        public static float PlayerSplineT { get; private set; }
+        public static float CachedSplineLength { get; private set; }
+
         private float currentDifficulty = 1f;
         private float gameTime = 0f;
         private float nextSpawnTime;
-        private float playerSplineT; // Normalized position (0-1)
         private bool isInWaveBreak = false;
         private float waveTimer = 0f;
 
-        // Object pooling
         private Dictionary<string, Queue<GameObject>> enemyPools = new Dictionary<string, Queue<GameObject>>();
 
         void Start()
         {
+            if (spline != null)
+                CachedSplineLength = spline.Spline.GetLength();
+
             InitializePools();
-            nextSpawnTime = Time.time + UnityEngine.Random.Range(minSpawnInterval, maxSpawnInterval);
+            nextSpawnTime = Time.time + Random.Range(minSpawnInterval, maxSpawnInterval);
         }
 
         void Update()
@@ -56,18 +64,13 @@ namespace BulletHell
             UpdatePlayerProgress();
 
             if (useWaveSystem)
-            {
                 HandleWaveSystem();
-            }
             else
-            {
                 HandleContinuousSpawning();
-            }
         }
 
         void UpdateDifficulty()
         {
-            // Gradually increase difficulty over time
             currentDifficulty = Mathf.Min(1f + (gameTime / 60f) * difficultyIncreaseRate, maxDifficulty);
         }
 
@@ -75,20 +78,17 @@ namespace BulletHell
         {
             if (spline == null) return;
 
-            // Option 1: If SplineAnimate is assigned, use its normalized time directly
             if (splineAnimate != null)
             {
-                playerSplineT = splineAnimate.NormalizedTime;
+                PlayerSplineT = splineAnimate.NormalizedTime;
                 return;
             }
 
-            // Option 2: Fallback to calculating from position
             if (splineFollower != null)
             {
-                Spline splineData = spline.Spline;
                 float3 followerPos = splineFollower.position;
-                SplineUtility.GetNearestPoint(splineData, followerPos, out float3 nearestPoint, out float t);
-                playerSplineT = t;
+                SplineUtility.GetNearestPoint(spline.Spline, followerPos, out _, out float t);
+                PlayerSplineT = t;
             }
         }
 
@@ -103,144 +103,122 @@ namespace BulletHell
                     isInWaveBreak = false;
                     waveTimer = 0f;
                 }
+                return;
             }
-            else
+
+            if (waveTimer >= waveDuration)
             {
-                if (waveTimer >= waveDuration)
-                {
-                    isInWaveBreak = true;
-                    waveTimer = 0f;
-                }
-                else if (Time.time >= nextSpawnTime)
-                {
-                    SpawnProceduralWave();
-                    float spawnRate = difficultySpawnRateCurve.Evaluate(currentDifficulty);
-                    nextSpawnTime = Time.time + Mathf.Lerp(maxSpawnInterval, minSpawnInterval, spawnRate);
-                }
+                isInWaveBreak = true;
+                waveTimer = 0f;
+                return;
             }
+
+            if (Time.time >= nextSpawnTime)
+                SpawnWave();
         }
 
         void HandleContinuousSpawning()
         {
             if (Time.time >= nextSpawnTime)
-            {
-                SpawnProceduralWave();
-                float spawnRate = difficultySpawnRateCurve.Evaluate(currentDifficulty);
-                nextSpawnTime = Time.time + Mathf.Lerp(maxSpawnInterval, minSpawnInterval, spawnRate);
-            }
+                SpawnWave();
         }
 
-        void SpawnProceduralWave()
+        void SpawnWave()
         {
-            // Determine spawn pattern based on difficulty
-            SpawnPattern pattern = ChooseRandomPattern();
-
-            int enemyCount = Mathf.RoundToInt(difficultyEnemyCountCurve.Evaluate(currentDifficulty) * UnityEngine.Random.Range(1, 4));
+            SpawnPattern pattern = ChoosePattern();
+            int count = Mathf.Max(1, Mathf.RoundToInt(difficultyEnemyCountCurve.Evaluate(currentDifficulty) * Random.Range(1, 4)));
 
             switch (pattern)
             {
-                case SpawnPattern.Single:
-                    SpawnSingleEnemy();
-                    break;
-                case SpawnPattern.HorizontalLine:
-                    SpawnHorizontalLine(enemyCount);
-                    break;
-                case SpawnPattern.VerticalLine:
-                    SpawnVerticalLine(enemyCount);
-                    break;
-                case SpawnPattern.VFormation:
-                    SpawnVFormation(enemyCount);
-                    break;
-                case SpawnPattern.Circle:
-                    SpawnCircle(enemyCount);
-                    break;
-                case SpawnPattern.Random:
-                    SpawnRandomCluster(enemyCount);
-                    break;
-                case SpawnPattern.Zigzag:
-                    SpawnZigzag(enemyCount);
-                    break;
+                case SpawnPattern.Single:         SpawnSingle();              break;
+                case SpawnPattern.HorizontalLine: SpawnHorizontalLine(count); break;
+                case SpawnPattern.VerticalLine:   SpawnVerticalLine(count);   break;
+                case SpawnPattern.VFormation:     SpawnVFormation(count);     break;
+                case SpawnPattern.Circle:         SpawnCircle(count);         break;
+                case SpawnPattern.Random:         SpawnRandomCluster(count);  break;
+                case SpawnPattern.Zigzag:         SpawnZigzag(count);         break;
             }
+
+            float spawnRate = difficultySpawnRateCurve.Evaluate(currentDifficulty);
+            nextSpawnTime = Time.time + Mathf.Lerp(maxSpawnInterval, minSpawnInterval, spawnRate);
         }
 
-        SpawnPattern ChooseRandomPattern()
+        SpawnPattern ChoosePattern()
         {
-            // Weight patterns based on difficulty
-            float rand = UnityEngine.Random.value;
+            float rand = Random.value;
 
             if (currentDifficulty < 2f)
-            {
                 return rand < 0.6f ? SpawnPattern.Single : SpawnPattern.HorizontalLine;
-            }
-            else if (currentDifficulty < 4f)
+
+            if (currentDifficulty < 4f)
             {
                 if (rand < 0.3f) return SpawnPattern.HorizontalLine;
                 if (rand < 0.6f) return SpawnPattern.VFormation;
                 return SpawnPattern.Random;
             }
-            else
-            {
-                // Higher difficulty - all patterns available
-                return (SpawnPattern)UnityEngine.Random.Range(0, System.Enum.GetValues(typeof(SpawnPattern)).Length);
-            }
+
+            // High difficulty: weighted toward complex patterns
+            if (rand < 0.15f) return SpawnPattern.Single;
+            if (rand < 0.30f) return SpawnPattern.HorizontalLine;
+            if (rand < 0.50f) return SpawnPattern.VFormation;
+            if (rand < 0.65f) return SpawnPattern.Circle;
+            if (rand < 0.80f) return SpawnPattern.Zigzag;
+            return SpawnPattern.Random;
         }
 
-        void SpawnSingleEnemy()
-        {
-            Vector2 randomOffset = new Vector2(
-                UnityEngine.Random.Range(spawnAreaWidth.x, spawnAreaWidth.y),
-                UnityEngine.Random.Range(spawnAreaHeight.x, spawnAreaHeight.y)
-            );
+        // --- Spawn Patterns ---
 
-            SpawnEnemyAtOffset(randomOffset, GetRandomEnemyType());
+        void SpawnSingle()
+        {
+            int lane = Random.Range(0, laneOffsets.Length);
+            float y = Random.Range(spawnAreaHeight.x, spawnAreaHeight.y);
+            SpawnEnemy(lane, y, GetRandomEnemyType());
         }
 
         void SpawnHorizontalLine(int count)
         {
-            float spacing = (spawnAreaWidth.y - spawnAreaWidth.x) / (count + 1);
-            float yPos = UnityEngine.Random.Range(spawnAreaHeight.x, spawnAreaHeight.y);
-
-            for (int i = 0; i < count; i++)
-            {
-                float xPos = spawnAreaWidth.x + spacing * (i + 1);
-                SpawnEnemyAtOffset(new Vector2(xPos, yPos), GetRandomEnemyType());
-            }
+            // One enemy per lane, capped to lane count
+            int[] lanes = PickRandomLanes(Mathf.Min(count, laneOffsets.Length));
+            float y = Random.Range(spawnAreaHeight.x, spawnAreaHeight.y);
+            foreach (int lane in lanes)
+                SpawnEnemy(lane, y, GetRandomEnemyType());
         }
 
         void SpawnVerticalLine(int count)
         {
+            int lane = Random.Range(0, laneOffsets.Length);
             float spacing = (spawnAreaHeight.y - spawnAreaHeight.x) / (count + 1);
-            float xPos = UnityEngine.Random.Range(spawnAreaWidth.x, spawnAreaWidth.y);
-
             for (int i = 0; i < count; i++)
             {
-                float yPos = spawnAreaHeight.x + spacing * (i + 1);
-                SpawnEnemyAtOffset(new Vector2(xPos, yPos), GetRandomEnemyType());
+                float y = spawnAreaHeight.x + spacing * (i + 1);
+                SpawnEnemy(lane, y, GetRandomEnemyType());
             }
         }
 
         void SpawnVFormation(int count)
         {
-            float angleSpread = 60f;
-            float spacing = 5f;
-
-            for (int i = 0; i < count; i++)
+            // Expands outward from center: center, left1, right1, left2, right2...
+            int center = laneOffsets.Length / 2;
+            for (int i = 0; i < count && i < laneOffsets.Length; i++)
             {
-                float angle = (i - count / 2f) * (angleSpread / count) * Mathf.Deg2Rad;
-                Vector2 offset = new Vector2(Mathf.Sin(angle) * spacing * i, Mathf.Cos(angle) * spacing * i);
-                SpawnEnemyAtOffset(offset, GetRandomEnemyType());
+                int offset = i / 2 + (i % 2 == 0 ? 0 : 1);
+                int laneIndex = (i % 2 == 0) ? center - i / 2 : center + offset;
+                laneIndex = Mathf.Clamp(laneIndex, 0, laneOffsets.Length - 1);
+                float y = i * 1.5f; // slight depth stagger gives V shape
+                SpawnEnemy(laneIndex, y, GetRandomEnemyType());
             }
         }
 
         void SpawnCircle(int count)
         {
-            float radius = UnityEngine.Random.Range(5f, 10f);
-
+            float radius = Random.Range(5f, 8f);
             for (int i = 0; i < count; i++)
             {
-                float angle = (i / (float)count) * 360f * Mathf.Deg2Rad;
-                Vector2 offset = new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
-                SpawnEnemyAtOffset(offset, GetRandomEnemyType());
+                float angle = (i / (float)count) * Mathf.PI * 2f;
+                float x = Mathf.Cos(angle) * radius;
+                float y = Mathf.Sin(angle) * radius;
+                int lane = NearestLane(x);
+                SpawnEnemy(lane, y, GetRandomEnemyType());
             }
         }
 
@@ -248,200 +226,168 @@ namespace BulletHell
         {
             for (int i = 0; i < count; i++)
             {
-                Vector2 randomOffset = new Vector2(
-                    UnityEngine.Random.Range(spawnAreaWidth.x, spawnAreaWidth.y),
-                    UnityEngine.Random.Range(spawnAreaHeight.x, spawnAreaHeight.y)
-                );
-                SpawnEnemyAtOffset(randomOffset, GetRandomEnemyType());
+                int lane = Random.Range(0, laneOffsets.Length);
+                float y = Random.Range(spawnAreaHeight.x, spawnAreaHeight.y);
+                SpawnEnemy(lane, y, GetRandomEnemyType());
             }
         }
 
         void SpawnZigzag(int count)
         {
-            float xSpacing = (spawnAreaWidth.y - spawnAreaWidth.x) / count;
-
+            // Alternates between leftmost and rightmost lanes
             for (int i = 0; i < count; i++)
             {
-                float xPos = spawnAreaWidth.x + xSpacing * i;
-                float yPos = (i % 2 == 0) ? spawnAreaHeight.x : spawnAreaHeight.y;
-                SpawnEnemyAtOffset(new Vector2(xPos, yPos), GetRandomEnemyType());
+                int lane = (i % 2 == 0) ? 0 : laneOffsets.Length - 1;
+                float y = Random.Range(spawnAreaHeight.x, spawnAreaHeight.y);
+                SpawnEnemy(lane, y, GetRandomEnemyType());
             }
         }
 
-        void SpawnEnemyAtOffset(Vector2 lateralOffset, EnemyType enemyType)
+        // --- Core Spawn ---
+
+        void SpawnEnemy(int laneIndex, float lateralY, EnemyType enemyType)
         {
-            if (spline == null) return;
+            if (spline == null || enemyType.prefab == null) return;
+
+            float normalizedDistance = spawnDistance / CachedSplineLength;
+            float spawnT = (PlayerSplineT + normalizedDistance) % 1f;
 
             Spline splineData = spline.Spline;
-
-            // Spawn ahead of player using percentage of spline (0-1 range)
-            // spawnDistance is in world units, but we work in normalized 0-1 space
-            float splineLength = splineData.GetLength();
-            float normalizedDistance = (spawnDistance / splineLength);
-
-            float spawnT = playerSplineT + normalizedDistance;
-
-            // Handle wrapping for looping splines
-            if (spawnT > 1f)
-                spawnT = spawnT - Mathf.Floor(spawnT); // Keeps decimal part
-            if (spawnT < 0f)
-                spawnT = 1f + spawnT;
-
-            // Evaluate spline at position
             float3 position = splineData.EvaluatePosition(spawnT);
-            float3 tangent = splineData.EvaluateTangent(spawnT);
-            float3 up = splineData.EvaluateUpVector(spawnT);
+            float3 tangent  = splineData.EvaluateTangent(spawnT);
+            float3 up       = splineData.EvaluateUpVector(spawnT);
 
-            // Convert from spline's local space to world space
-            Vector3 localPos = position;
-            Vector3 worldPos = spline.transform.TransformPoint(localPos);
-
-            // Calculate right vector in world space
+            Vector3 worldPos     = spline.transform.TransformPoint(position);
             Vector3 splineTangent = spline.transform.TransformDirection(tangent);
-            Vector3 splineUp = spline.transform.TransformDirection(up);
-            Vector3 splineRight = Vector3.Cross(splineUp, splineTangent).normalized;
+            Vector3 splineUp     = spline.transform.TransformDirection(up);
+            Vector3 splineRight  = Vector3.Cross(splineUp, splineTangent).normalized;
 
-            Vector3 finalPos = worldPos +
-                              splineRight * lateralOffset.x +
-                              splineUp * lateralOffset.y;
+            float lateralX = laneOffsets[laneIndex];
+            Vector3 finalPos = worldPos + splineRight * lateralX + splineUp * lateralY;
 
-            GameObject enemy = GetPooledEnemy(enemyType.prefab.name);
-            if (enemy == null)
-            {
-                enemy = Instantiate(enemyType.prefab);
-            }
-
+            GameObject enemy = GetPooledEnemy(enemyType.prefab.name) ?? Instantiate(enemyType.prefab);
             enemy.transform.position = finalPos;
             enemy.SetActive(true);
 
-            // Initialize enemy
             EnemyController controller = enemy.GetComponent<EnemyController>();
-            if (controller != null)
-            {
-                controller.Initialize(spline, spawnT, enemyType.moveSpeed, enemyType.movementPattern);
-            }
+            controller?.Initialize(spline, spawnT, enemyType, laneIndex, laneOffsets, lateralY, this);
         }
+
+        // --- Enemy Type Selection ---
 
         EnemyType GetRandomEnemyType()
         {
-            // Weight enemy types based on difficulty
             float totalWeight = 0f;
             foreach (var type in enemyTypes)
-            {
                 if (currentDifficulty >= type.minDifficulty)
                     totalWeight += type.spawnWeight;
-            }
 
-            float randomValue = UnityEngine.Random.value * totalWeight;
-            float cumulativeWeight = 0f;
-
+            float rand = Random.value * totalWeight;
+            float cumulative = 0f;
             foreach (var type in enemyTypes)
             {
                 if (currentDifficulty >= type.minDifficulty)
                 {
-                    cumulativeWeight += type.spawnWeight;
-                    if (randomValue <= cumulativeWeight)
-                        return type;
+                    cumulative += type.spawnWeight;
+                    if (rand <= cumulative) return type;
                 }
             }
-
             return enemyTypes[0];
         }
 
-        // Object Pooling
+        // --- Helpers ---
+
+        int[] PickRandomLanes(int count)
+        {
+            List<int> all = new List<int>();
+            for (int i = 0; i < laneOffsets.Length; i++) all.Add(i);
+
+            int[] result = new int[count];
+            for (int i = 0; i < count; i++)
+            {
+                int idx = Random.Range(0, all.Count);
+                result[i] = all[idx];
+                all.RemoveAt(idx);
+            }
+            return result;
+        }
+
+        int NearestLane(float xPos)
+        {
+            int best = 0;
+            float bestDist = float.MaxValue;
+            for (int i = 0; i < laneOffsets.Length; i++)
+            {
+                float d = Mathf.Abs(laneOffsets[i] - xPos);
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+            return best;
+        }
+
+        // --- Object Pooling ---
+
         void InitializePools()
         {
-            foreach (var enemyType in enemyTypes)
+            foreach (var type in enemyTypes)
             {
-                enemyPools[enemyType.prefab.name] = new Queue<GameObject>();
-
-                for (int i = 0; i < enemyType.poolSize; i++)
+                if (type.prefab == null) continue;
+                enemyPools[type.prefab.name] = new Queue<GameObject>();
+                for (int i = 0; i < type.poolSize; i++)
                 {
-                    GameObject obj = Instantiate(enemyType.prefab);
+                    GameObject obj = Instantiate(type.prefab);
                     obj.SetActive(false);
-                    enemyPools[enemyType.prefab.name].Enqueue(obj);
+                    enemyPools[type.prefab.name].Enqueue(obj);
                 }
             }
         }
 
-        GameObject GetPooledEnemy(string enemyName)
+        GameObject GetPooledEnemy(string prefabName)
         {
-            if (enemyPools.ContainsKey(enemyName) && enemyPools[enemyName].Count > 0)
-            {
-                GameObject obj = enemyPools[enemyName].Dequeue();
-                return obj;
-            }
-            return null;
+            return enemyPools.TryGetValue(prefabName, out var pool) && pool.Count > 0
+                ? pool.Dequeue()
+                : null;
         }
 
         public void ReturnToPool(GameObject enemy)
         {
             enemy.SetActive(false);
-            string cleanName = enemy.name.Replace("(Clone)", "").Trim();
-            if (enemyPools.ContainsKey(cleanName))
-            {
-                enemyPools[cleanName].Enqueue(enemy);
-            }
+            string key = enemy.name.Replace("(Clone)", "").Trim();
+            if (enemyPools.TryGetValue(key, out var pool))
+                pool.Enqueue(enemy);
         }
 
-        // Debug - Visualize spawn area
+        // --- Gizmos ---
+
         void OnDrawGizmosSelected()
         {
-            if (spline == null)
-            {
-                Debug.LogWarning("EnemySpawner: Spline not assigned!");
-                return;
-            }
-
-            if (splineFollower == null)
-            {
-                Debug.LogWarning("EnemySpawner: Spline Follower not assigned!");
-                return;
-            }
+            if (spline == null) return;
 
             Spline splineData = spline.Spline;
-            float splineLength = splineData.GetLength();
+            float splineLength = Application.isPlaying ? CachedSplineLength : splineData.GetLength();
+            if (splineLength <= 0f) return;
 
-            // Use current player position if playing, otherwise show at middle of spline
-            float testT = Application.isPlaying ? playerSplineT : 0.5f;
-            float spawnT = testT + (spawnDistance / splineLength);
-            if (spawnT > 1f) spawnT = spawnT % 1f;
+            float testT = Application.isPlaying ? PlayerSplineT : 0.5f;
+            float spawnT = (testT + spawnDistance / splineLength) % 1f;
 
-            float3 position = splineData.EvaluatePosition(spawnT);
-            float3 tangent = splineData.EvaluateTangent(spawnT);
-            float3 up = splineData.EvaluateUpVector(spawnT);
+            float3 pos = splineData.EvaluatePosition(spawnT);
+            float3 tan = splineData.EvaluateTangent(spawnT);
+            float3 up  = splineData.EvaluateUpVector(spawnT);
 
-            // Convert from spline's local space to world space
-            Vector3 localPos = position;
-            Vector3 worldPos = spline.transform.TransformPoint(localPos);
+            Vector3 worldPos    = spline.transform.TransformPoint(pos);
+            Vector3 splineUp    = spline.transform.TransformDirection(up);
+            Vector3 splineRight = Vector3.Cross(splineUp, spline.transform.TransformDirection(tan)).normalized;
 
-            Vector3 splineTangent = spline.transform.TransformDirection(tangent);
-            Vector3 splineUp = spline.transform.TransformDirection(up);
-            Vector3 splineRight = Vector3.Cross(splineUp, splineTangent).normalized;
-            Vector3 splinePos = worldPos;
-
-            // Draw spawn area boundaries in yellow
             Gizmos.color = Color.yellow;
+            foreach (float lane in laneOffsets)
+            {
+                Vector3 center = worldPos + splineRight * lane;
+                Gizmos.DrawWireSphere(center, 1f);
+                Gizmos.DrawLine(center + splineUp * spawnAreaHeight.y, center + splineUp * spawnAreaHeight.x);
+            }
 
-            Vector3 topLeft = splinePos + splineRight * spawnAreaWidth.x + splineUp * spawnAreaHeight.y;
-            Vector3 topRight = splinePos + splineRight * spawnAreaWidth.y + splineUp * spawnAreaHeight.y;
-            Vector3 bottomLeft = splinePos + splineRight * spawnAreaWidth.x + splineUp * spawnAreaHeight.x;
-            Vector3 bottomRight = splinePos + splineRight * spawnAreaWidth.y + splineUp * spawnAreaHeight.x;
-
-            Gizmos.DrawLine(topLeft, topRight);
-            Gizmos.DrawLine(topRight, bottomRight);
-            Gizmos.DrawLine(bottomRight, bottomLeft);
-            Gizmos.DrawLine(bottomLeft, topLeft);
-
-            // Draw center sphere for easy visibility
-            Gizmos.DrawWireSphere(splinePos, 2f);
-
-            // Draw line from follower to spawn point
             Gizmos.color = Color.cyan;
             if (splineFollower != null)
-            {
-                Gizmos.DrawLine(splineFollower.position, splinePos);
-            }
+                Gizmos.DrawLine(splineFollower.position, worldPos);
         }
     }
 
@@ -453,27 +399,22 @@ namespace BulletHell
         public float spawnWeight = 1f;
         public float minDifficulty = 1f;
         public int poolSize = 10;
+        public int health = 3;
+        public int scoreValue = 100;
         public float moveSpeed = 5f;
+        public float retreatSpeed = 12f;
         public MovementPattern movementPattern;
+        public bool canRetreat = true;
+        public bool oscillates = false;
     }
 
     public enum SpawnPattern
     {
-        Single,
-        HorizontalLine,
-        VerticalLine,
-        VFormation,
-        Circle,
-        Random,
-        Zigzag
+        Single, HorizontalLine, VerticalLine, VFormation, Circle, Random, Zigzag
     }
 
     public enum MovementPattern
     {
-        Straight,
-        SineWave,
-        CircleStrafe,
-        Zigzag,
-        FollowPlayer
+        Straight, SineWave, CircleStrafe, Zigzag, FollowPlayer
     }
 }
