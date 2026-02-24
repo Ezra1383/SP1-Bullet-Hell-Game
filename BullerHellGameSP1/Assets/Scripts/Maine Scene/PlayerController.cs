@@ -48,8 +48,7 @@ namespace BulletHell
 
         [Header("Aim Settings")]
         [SerializeField] private Camera mainCamera;
-        [SerializeField] private float aimDistance = 100f; // Default distance if raycast hits nothing
-        [SerializeField] private LayerMask aimLayerMask = ~0; // What layers to raycast against
+        [SerializeField] private float aimDistance = 500f;
         [SerializeField] private float aimTweenDuration = 0.12f;
         [SerializeField] private Ease aimEase = Ease.OutSine;
 
@@ -201,39 +200,25 @@ namespace BulletHell
         {
             if (aimTarget == null || mainCamera == null) return;
 
-            // Get mouse position directly from Unity (not Input System)
             Vector3 mousePos = (Vector3)input.Aim;
-
-            // Create a ray from the camera through the mouse position
             Ray ray = mainCamera.ScreenPointToRay(mousePos);
 
-            // Raycast to find actual world geometry, ignoring the aimpoint itself and player
-            RaycastHit[] hits = Physics.RaycastAll(ray, aimDistance, aimLayerMask);
-            RaycastHit? closestHit = null;
-            float closestDistance = float.MaxValue;
+            // Intersect the ray with a plane sitting aimDistance units in front of the ship.
+            Vector3 planeCenter = transform.position + transform.forward * aimDistance;
+            Plane aimPlane = new Plane(-mainCamera.transform.forward, planeCenter);
 
-            foreach (RaycastHit hit in hits)
-            {
-                // Ignore the aimpoint itself, player, and player bullets
-                if (hit.transform == aimTarget ||
-                    hit.transform.IsChildOf(aimTarget) ||
-                    hit.transform == transform ||
-                    hit.transform.IsChildOf(transform) ||
-                    hit.collider.CompareTag("PlayerBullet"))
-                    continue;
+            Vector3 worldHit;
+            if (aimPlane.Raycast(ray, out float enter))
+                worldHit = ray.GetPoint(enter);
+            else
+                worldHit = planeCenter;
 
-                // Track closest valid hit
-                if (hit.distance < closestDistance)
-                {
-                    closestDistance = hit.distance;
-                    closestHit = hit;
-                }
-            }
-
-            Vector3 desiredPos = closestHit.HasValue ? closestHit.Value.point : ray.GetPoint(aimDistance);
+            // Convert to local space and only move XY — Z stays fixed (set in Inspector).
+            Vector3 localHit = transform.InverseTransformPoint(worldHit);
+            Vector3 desiredLocal = new Vector3(localHit.x, localHit.y, aimTarget.localPosition.z);
 
             aimTarget.DOKill();
-            aimTarget.DOMove(desiredPos, aimTweenDuration).SetEase(aimEase);
+            aimTarget.DOLocalMove(desiredLocal, aimTweenDuration).SetEase(aimEase);
         }
 
         private void HandleTurretAiming()

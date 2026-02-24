@@ -18,7 +18,7 @@ namespace BulletHell
         [SerializeField] private bool showDebugRays = false;
         [Tooltip("When using MediaPipe: only fire when aim ray hits an enemy. Requires enemies to use tag \"Enemy\".")]
         [SerializeField] private string enemyTag = "Enemy";
-        [SerializeField] private float aimRayDistance = 500f;
+        [SerializeField] private float aimRayDistance = 1000f;
         [SerializeField] private LayerMask aimRayLayerMask = ~0;
 
         private float nextFireTime;
@@ -50,9 +50,7 @@ namespace BulletHell
                 }
             }
 
-            bool shouldFire = input.useMediaPipeInput
-                ? IsAimOnEnemy(mainCam)
-                : input.IsFiring;
+            bool shouldFire = input.useMediaPipeInput || input.IsFiring;
 
             if (shouldFire && Time.time >= nextFireTime)
             {
