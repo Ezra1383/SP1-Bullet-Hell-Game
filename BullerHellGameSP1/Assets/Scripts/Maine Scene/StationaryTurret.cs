@@ -105,9 +105,7 @@ namespace BulletHell
             }
 
             if (explosion != null)
-            {
                 Instantiate(explosion, transform.position, transform.rotation);
-            }
 
             Destroy(gameObject);
         }

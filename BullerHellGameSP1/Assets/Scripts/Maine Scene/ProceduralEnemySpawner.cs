@@ -406,6 +406,8 @@ namespace BulletHell
         public MovementPattern movementPattern;
         public bool canRetreat = true;
         public bool oscillates = false;
+        public float weaveAmplitude = 6f;  // how wide/tall the weave travels
+        public float weaveFrequency = 3f;  // how fast it oscillates
     }
 
     public enum SpawnPattern
@@ -415,6 +417,6 @@ namespace BulletHell
 
     public enum MovementPattern
     {
-        Straight, SineWave, CircleStrafe, Zigzag, FollowPlayer
+        Straight, SineWave, CircleStrafe, Zigzag, FollowPlayer, SinusoidalWeave
     }
 }

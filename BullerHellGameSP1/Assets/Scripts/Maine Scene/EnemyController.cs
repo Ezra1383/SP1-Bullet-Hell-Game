@@ -34,6 +34,8 @@ namespace BulletHell
         private MovementPattern movementPattern;
         private bool canRetreat;
         private bool oscillates;
+        private float weaveAmplitude;
+        private float weaveFrequency;
         private int health;
         private int scoreValue;
 
@@ -81,6 +83,8 @@ namespace BulletHell
             movementPattern   = type.movementPattern;
             canRetreat        = type.canRetreat;
             oscillates        = type.oscillates;
+            weaveAmplitude    = type.weaveAmplitude;
+            weaveFrequency    = type.weaveFrequency;
             health            = type.health;
             scoreValue        = type.scoreValue;
 
@@ -150,22 +154,28 @@ namespace BulletHell
             switch (movementPattern)
             {
                 case MovementPattern.SineWave:
-                    patternOffsetX = Mathf.Sin(t * 2f) * 3f;
+                    patternOffsetX = Mathf.Sin(t * weaveFrequency) * weaveAmplitude;
                     break;
 
                 case MovementPattern.Zigzag:
-                    patternOffsetX = Mathf.PingPong(t * 3f, 6f) - 3f;
+                    patternOffsetX = Mathf.PingPong(t * weaveFrequency, weaveAmplitude * 2f) - weaveAmplitude;
                     break;
 
                 case MovementPattern.CircleStrafe:
-                    patternOffsetX = Mathf.Cos(t * 2f) * 5f;
-                    lateralY = Mathf.Sin(t * 2f) * 5f; // also moves on Y axis
+                    patternOffsetX = Mathf.Cos(t * weaveFrequency) * weaveAmplitude;
+                    lateralY = Mathf.Sin(t * weaveFrequency) * weaveAmplitude;
                     break;
 
                 case MovementPattern.FollowPlayer:
                     // Track the player's lateral position on the spline
                     if (playerTarget != null)
                         targetLateralX = EstimatePlayerLateralX();
+                    break;
+
+                case MovementPattern.SinusoidalWeave:
+                    // X and Y oscillate at different frequencies, creating a 2D Lissajous-style weave
+                    patternOffsetX = Mathf.Sin(t * weaveFrequency) * weaveAmplitude;
+                    lateralY = Mathf.Sin(t * weaveFrequency * 0.6f + wavePhase * 0.5f) * weaveAmplitude * 0.75f;
                     break;
             }
 
