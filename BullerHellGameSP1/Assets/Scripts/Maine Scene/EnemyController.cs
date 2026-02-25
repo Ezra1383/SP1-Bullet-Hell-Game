@@ -19,7 +19,7 @@ namespace BulletHell
         private const float RetreatTriggerDistance = 30f;  // world-space proximity that triggers retreat
         private const float LaneLerpSpeed          = 3f;   // how fast enemy slides to new lane
         private const float ShootBlendCutoff       = 0.55f;// stop shooting once retreatBlend exceeds this
-        private const float BehindCullThreshold    = -0.05f; // cull if this far behind player (normalized T)
+        private const float BehindCullThreshold    = -0.01f; // cull if this far behind player (normalized T)
         private const float AheadCullThreshold     = 0.30f;  // cull if this far ahead after retreating (normalized T)
 
         // --- Runtime state ---
@@ -126,8 +126,7 @@ namespace BulletHell
             retreatBlend = Mathf.MoveTowards(retreatBlend, targetBlend, RetreatTransitionSpeed * Time.deltaTime);
 
             // --- Move along spline ---
-            // Lerping between negative (approach) and positive (retreat) delta creates the
-            // natural decelerate → stop → accelerate feel without any explicit state branching.
+            if (cachedSplineLength <= 0f) { ReturnToPool(); return; }
             float approachDelta = -(moveSpeed    / cachedSplineLength) * Time.deltaTime;
             float retreatDelta  = +(retreatSpeed / cachedSplineLength) * Time.deltaTime;
             currentT += Mathf.Lerp(approachDelta, retreatDelta, retreatBlend);
@@ -182,8 +181,8 @@ namespace BulletHell
             // --- Apply position and rotation ---
             UpdatePositionAndRotation(currentLateralX + patternOffsetX, lateralY);
 
-            // --- Shoot only while not significantly retreating ---
-            if (canShoot && retreatBlend < ShootBlendCutoff && Time.time >= nextFireTime)
+            // --- Shoot only while not significantly retreating and still ahead of the player ---
+            if (canShoot && retreatBlend < ShootBlendCutoff && tDiff > 0f && Time.time >= nextFireTime)
             {
                 Shoot();
                 nextFireTime = Time.time + fireRate;
@@ -201,7 +200,9 @@ namespace BulletHell
             Vector3 worldPos      = splineContainer.transform.TransformPoint(position);
             Vector3 splineTangent = splineContainer.transform.TransformDirection(tangent);
             Vector3 splineUp      = splineContainer.transform.TransformDirection(up);
-            Vector3 splineRight   = Vector3.Cross(splineUp, splineTangent).normalized;
+            Vector3 cross         = Vector3.Cross(splineUp, splineTangent);
+            if (cross.sqrMagnitude < 0.0001f) return; // degenerate tangent at this spline point — skip frame
+            Vector3 splineRight   = cross.normalized;
 
             transform.position = worldPos + splineRight * lateralX + splineUp * lateralYVal;
 
@@ -257,7 +258,14 @@ namespace BulletHell
             // Enemy_Bullet prefab uses Projectile.cs — must call Launch() to enable movement
             Projectile projectile = bullet.GetComponent<Projectile>();
             if (projectile != null)
+            {
                 projectile.Launch(direction);
+
+                // Cull the bullet once it passes behind the player on the spline axis
+                float3 tan = spline.EvaluateTangent(Mathf.Clamp01(currentT));
+                Vector3 splineForward = splineContainer.transform.TransformDirection(tan).normalized;
+                projectile.SetSplineCull(playerTarget, splineForward);
+            }
         }
 
         public void TakeDamage(int damage)

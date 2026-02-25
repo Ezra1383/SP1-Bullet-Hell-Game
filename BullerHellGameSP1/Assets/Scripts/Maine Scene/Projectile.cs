@@ -15,19 +15,39 @@ namespace BulletHell
         private bool isMoving = false;
         private Vector3 direction;
 
+        // Spline-based culling (set by enemy on fire — skipped for player bullets)
+        private Transform _cullPlayer;
+        private Vector3 _splineForward;
+        private bool _useCullCheck;
+
+        public void SetSplineCull(Transform player, Vector3 splineForward)
+        {
+            _cullPlayer   = player;
+            _splineForward = splineForward;
+            _useCullCheck  = true;
+        }
+
         public void Launch(Vector3 dir)
         {
             transform.SetParent(null);
             gameObject.isStatic = false;
             direction = dir.normalized;
             isMoving = true;
-            Destroy(gameObject, lifeTime);
+            Destroy(gameObject, lifeTime); // fallback safety timer
         }
 
         void Update()
         {
             if (!isMoving) return;
             transform.position += direction * speed * Time.deltaTime;
+
+            // Cull enemy bullets the moment they pass behind the player on the spline axis
+            if (_useCullCheck && _cullPlayer != null)
+            {
+                float signedDist = Vector3.Dot(transform.position - _cullPlayer.position, _splineForward);
+                if (signedDist < 0f)
+                    Destroy(gameObject);
+            }
         }
 
         private void OnTriggerEnter(Collider other)

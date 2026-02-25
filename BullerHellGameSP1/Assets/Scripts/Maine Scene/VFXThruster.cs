@@ -5,12 +5,16 @@ public class VFXThruster : MonoBehaviour
 {
     private VisualEffect vfx;
 
-    void Start()
+    void Awake()
     {
         vfx = GetComponent<VisualEffect>();
-        if (vfx == null) return;
+    }
 
-        vfx.SendEvent("create");
+    void OnEnable()
+    {
+        if (vfx == null) return;
+        vfx.Stop();
+        vfx.Play();          // resets the simulation so pooled enemies don't get stale particles
         vfx.SendEvent("loop");
     }
 
