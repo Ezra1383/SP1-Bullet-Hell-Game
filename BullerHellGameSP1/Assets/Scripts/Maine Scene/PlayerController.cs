@@ -66,6 +66,8 @@ namespace BulletHell
 
             if (mainCamera == null)
                 mainCamera = Camera.main;
+
+            HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
         }
 
         private void Update()
@@ -85,6 +87,9 @@ namespace BulletHell
             lastHitTime = Time.time; // Reset the 10-second timer
             Debug.Log($"Player Hit! Health: {currentHealth}");
 
+            HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
+            HitStopManager.Instance?.TriggerHitStop();
+
             if (currentHealth <= 0) Die();
         }
 
@@ -98,6 +103,7 @@ namespace BulletHell
                     currentHealth++;
                     nextRegenTick = Time.time + regenInterval;
                     Debug.Log($"Regenerating... Health: {currentHealth}");
+                    HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
                 }
             }
         }
@@ -237,8 +243,7 @@ namespace BulletHell
 
         private void Die()
         {
-            Debug.Log("Game Over!");
-            // Add explosion VFX or Scene Restart here
+            GameOverScreen.Instance?.Show();
         }
     }
 }

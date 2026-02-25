@@ -58,6 +58,10 @@ namespace BulletHell
         private bool isRetreating;
         private float retreatBlend;
 
+        // --- Kamikaze ---
+        private float detonationRadius;
+        private float suicideSpeedMultiplier;
+
         void Start()
         {
             playerTarget = GameObject.FindGameObjectWithTag("Player")?.transform;
@@ -97,6 +101,9 @@ namespace BulletHell
             wavePhase    = Random.Range(0f, Mathf.PI * 2f);
             isRetreating = false;
             retreatBlend = 0f;
+
+            detonationRadius     = type.detonationRadius;
+            suicideSpeedMultiplier = type.suicideSpeedMultiplier;
         }
 
         void Update()
@@ -127,8 +134,18 @@ namespace BulletHell
 
             // --- Move along spline ---
             if (cachedSplineLength <= 0f) { ReturnToPool(); return; }
-            float approachDelta = -(moveSpeed    / cachedSplineLength) * Time.deltaTime;
-            float retreatDelta  = +(retreatSpeed / cachedSplineLength) * Time.deltaTime;
+
+            // Kamikaze: ramp speed up as it closes in on the player
+            float activeMoveSpeed = moveSpeed;
+            if (movementPattern == MovementPattern.Kamikaze && playerTarget != null)
+            {
+                float dist    = Vector3.Distance(transform.position, playerTarget.position);
+                float ramp    = 1f - Mathf.Clamp01(dist / (RetreatTriggerDistance * 0.75f));
+                activeMoveSpeed = Mathf.Lerp(moveSpeed, moveSpeed * suicideSpeedMultiplier, ramp);
+            }
+
+            float approachDelta = -(activeMoveSpeed / cachedSplineLength) * Time.deltaTime;
+            float retreatDelta  = +(retreatSpeed    / cachedSplineLength) * Time.deltaTime;
             currentT += Mathf.Lerp(approachDelta, retreatDelta, retreatBlend);
 
             // Wrap T for looping spline
@@ -171,6 +188,15 @@ namespace BulletHell
                         targetLateralX = EstimatePlayerLateralX();
                     break;
 
+                case MovementPattern.Kamikaze:
+                    // Track both X and Y so the enemy homes directly onto the player
+                    if (playerTarget != null)
+                    {
+                        targetLateralX = EstimatePlayerLateralX();
+                        lateralY = Mathf.Lerp(lateralY, EstimatePlayerLateralY(), 4f * Time.deltaTime);
+                    }
+                    break;
+
                 case MovementPattern.SinusoidalWeave:
                     // X and Y oscillate at different frequencies, creating a 2D Lissajous-style weave
                     patternOffsetX = Mathf.Sin(t * weaveFrequency) * weaveAmplitude;
@@ -180,6 +206,16 @@ namespace BulletHell
 
             // --- Apply position and rotation ---
             UpdatePositionAndRotation(currentLateralX + patternOffsetX, lateralY);
+
+            // --- Kamikaze detonation check ---
+            if (movementPattern == MovementPattern.Kamikaze && playerTarget != null)
+            {
+                if (Vector3.Distance(transform.position, playerTarget.position) <= detonationRadius)
+                {
+                    SuicideDetonate();
+                    return;
+                }
+            }
 
             // --- Shoot only while not significantly retreating and still ahead of the player ---
             if (canShoot && retreatBlend < ShootBlendCutoff && tDiff > 0f && Time.time >= nextFireTime)
@@ -248,6 +284,33 @@ namespace BulletHell
             return Mathf.Clamp(lateral, laneOffsets[0], laneOffsets[laneOffsets.Length - 1]);
         }
 
+        // Estimate the player's vertical (Y) offset from the spline center
+        float EstimatePlayerLateralY()
+        {
+            if (playerTarget == null) return lateralY;
+
+            float pT = Mathf.Clamp01(ProceduralEnemySpawner.PlayerSplineT);
+            float3 splinePos3 = spline.EvaluatePosition(pT);
+            float3 splineUp3  = spline.EvaluateUpVector(pT);
+
+            Vector3 worldSplinePos = splineContainer.transform.TransformPoint(splinePos3);
+            Vector3 worldUp        = splineContainer.transform.TransformDirection(splineUp3);
+
+            Vector3 toPlayer = playerTarget.position - worldSplinePos;
+            return Vector3.Dot(toPlayer, worldUp);
+        }
+
+        // Kamikaze detonation: deal damage, spawn explosion, return to pool
+        void SuicideDetonate()
+        {
+            // Damage + hit-stop are handled by ExplosionDamage.cs on the explosion prefab.
+            // No direct TakeDamage call here — avoids double-hitting the player.
+            if (explosionPrefab != null)
+                Instantiate(explosionPrefab, transform.position, transform.rotation);
+
+            ReturnToPool();
+        }
+
         void Shoot()
         {
             if (bulletPrefab == null || firePoint == null || playerTarget == null) return;
@@ -276,8 +339,7 @@ namespace BulletHell
 
         void Die()
         {
-            if (ScoreManager.Instance != null)
-                ScoreManager.Instance.AddScore(scoreValue);
+            ScoreManager.Instance?.AddScore(scoreValue);
 
             if (explosionPrefab != null)
                 Instantiate(explosionPrefab, transform.position, transform.rotation);
@@ -315,10 +377,11 @@ namespace BulletHell
 
         void OnTriggerEnter(Collider other)
         {
-            if (other.CompareTag("Player"))
+            PlayerController player = other.GetComponent<PlayerController>()
+                                   ?? other.GetComponentInParent<PlayerController>();
+            if (player != null)
             {
-                if (other.TryGetComponent(out PlayerController player))
-                    player.TakeDamage(1);
+                player.TakeDamage(1);
                 Destroy(gameObject);
             }
         }

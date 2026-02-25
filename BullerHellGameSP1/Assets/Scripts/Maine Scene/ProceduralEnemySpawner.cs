@@ -408,6 +408,12 @@ namespace BulletHell
         public bool oscillates = false;
         public float weaveAmplitude = 6f;  // how wide/tall the weave travels
         public float weaveFrequency = 3f;  // how fast it oscillates
+
+        [Header("Kamikaze (only used when MovementPattern = Kamikaze)")]
+        [Tooltip("World-space radius at which the enemy detonates and deals 1 damage")]
+        public float detonationRadius = 3f;
+        [Tooltip("Extra speed multiplier applied at point-blank range (ramps from 1x → this value as it closes in)")]
+        public float suicideSpeedMultiplier = 2.5f;
     }
 
     public enum SpawnPattern
@@ -417,6 +423,6 @@ namespace BulletHell
 
     public enum MovementPattern
     {
-        Straight, SineWave, CircleStrafe, Zigzag, FollowPlayer, SinusoidalWeave
+        Straight, SineWave, CircleStrafe, Zigzag, FollowPlayer, SinusoidalWeave, Kamikaze
     }
 }

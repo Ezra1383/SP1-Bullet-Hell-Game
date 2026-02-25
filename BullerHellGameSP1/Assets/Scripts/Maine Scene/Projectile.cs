@@ -52,23 +52,22 @@ namespace BulletHell
 
         private void OnTriggerEnter(Collider other)
         {
-            // 1. Check if we hit the intended target tag
-            if (other.CompareTag(targetTag))
-            {
-                // 2. Try to find a component that can take damage
-                // We use TryGetComponent for efficiency
-                if (other.TryGetComponent(out EnemyController enemy))
-                {
-                    enemy.TakeDamage(damage);
-                }
-                else if (other.TryGetComponent(out StationaryTurret turret))
-                {
-                    turret.TakeDamage(damage);
-                }
+            // Support child-collider setups: accept the tag on the hit object OR on its root
+            if (!other.CompareTag(targetTag) && !other.transform.root.CompareTag(targetTag))
+                return;
 
-                // 3. Destroy the bullet after dealing damage
-                Destroy(gameObject);
-            }
+            EnemyController  enemy  = other.GetComponent<EnemyController>()
+                                   ?? other.GetComponentInParent<EnemyController>();
+            StationaryTurret turret = other.GetComponent<StationaryTurret>()
+                                   ?? other.GetComponentInParent<StationaryTurret>();
+            PlayerController player = other.GetComponent<PlayerController>()
+                                   ?? other.GetComponentInParent<PlayerController>();
+
+            if      (enemy  != null) enemy.TakeDamage(damage);
+            else if (turret != null) turret.TakeDamage(damage);
+            else if (player != null) player.TakeDamage(damage);
+
+            Destroy(gameObject);
         }
 
         private void OnDestroy()
