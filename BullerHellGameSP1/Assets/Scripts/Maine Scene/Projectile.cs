@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.VFX;
 
 namespace BulletHell
 {
@@ -8,6 +9,8 @@ namespace BulletHell
         public float lifeTime = 5f;
         public int damage = 1;
         public string targetTag = "Enemy";
+
+        public GameObject explosionPrefab;
 
         private bool isMoving = false;
         private Vector3 direction;
@@ -46,6 +49,23 @@ namespace BulletHell
                 // 3. Destroy the bullet after dealing damage
                 Destroy(gameObject);
             }
+        }
+
+        private void OnDestroy()
+        {
+            if (!gameObject.scene.isLoaded) return;
+
+            // Detach any child trail VFX so it fades out instead of cutting off
+            VisualEffect trail = GetComponentInChildren<VisualEffect>();
+            if (trail != null)
+            {
+                trail.transform.SetParent(null);
+                trail.Stop();
+                Destroy(trail.gameObject, 2f);
+            }
+
+            if (explosionPrefab != null)
+                Instantiate(explosionPrefab, transform.position, transform.rotation);
         }
     }
 }
