@@ -24,6 +24,8 @@ namespace BulletHell
         [SerializeField] private string enemyTag = "Enemy";
         [SerializeField] private float aimRayDistance = 1000f;
         [SerializeField] private LayerMask aimRayLayerMask = ~0;
+        [Tooltip("Radius of the sphere used for aim detection. Increase to match the visual size of your aim overlay so the player fires whenever the overlay covers an enemy. Set to 0 to use a thin raycast instead.")]
+        [SerializeField] private float aimRayRadius = 2f;
 
         private float nextFireTime;
         private int currentFirePointIndex = 0;
@@ -78,7 +80,9 @@ namespace BulletHell
             Vector3 origin = cam.transform.position;
             Vector3 dir = (aimTarget.position - origin).normalized;
             Ray ray = new Ray(origin, dir);
-            RaycastHit[] hits = Physics.RaycastAll(ray, aimRayDistance, aimRayLayerMask);
+            RaycastHit[] hits = aimRayRadius > 0f
+                ? Physics.SphereCastAll(ray, aimRayRadius, aimRayDistance, aimRayLayerMask)
+                : Physics.RaycastAll(ray, aimRayDistance, aimRayLayerMask);
 
             // Sort by distance and return true if the first valid hit is an enemy
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
