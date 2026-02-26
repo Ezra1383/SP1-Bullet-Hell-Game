@@ -45,7 +45,7 @@ namespace BulletHell
             if (_useCullCheck && _cullPlayer != null)
             {
                 float signedDist = Vector3.Dot(transform.position - _cullPlayer.position, _splineForward);
-                if (signedDist < 0f)
+                if (signedDist < 200f)
                     Destroy(gameObject);
             }
         }
