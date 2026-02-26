@@ -52,10 +52,6 @@ namespace BulletHell
 
         private void OnTriggerEnter(Collider other)
         {
-            // Support child-collider setups: accept the tag on the hit object OR on its root
-            if (!other.CompareTag(targetTag) && !other.transform.root.CompareTag(targetTag))
-                return;
-
             EnemyController  enemy  = other.GetComponent<EnemyController>()
                                    ?? other.GetComponentInParent<EnemyController>();
             StationaryTurret turret = other.GetComponent<StationaryTurret>()
@@ -63,9 +59,18 @@ namespace BulletHell
             PlayerController player = other.GetComponent<PlayerController>()
                                    ?? other.GetComponentInParent<PlayerController>();
 
-            if      (enemy  != null) enemy.TakeDamage(damage);
-            else if (turret != null) turret.TakeDamage(damage);
-            else if (player != null) player.TakeDamage(damage);
+            // Use component presence to determine valid targets, not tag.
+            // This avoids false negatives when the bullet hits a child collider
+            // whose hierarchy root isn't the tagged object.
+            bool hit = false;
+            if      (targetTag == "Enemy"  && enemy  != null) { enemy.TakeDamage(damage);  hit = true; }
+            else if (targetTag == "Enemy"  && turret != null) { turret.TakeDamage(damage); hit = true; }
+            else if (targetTag == "Player" && player != null) { player.TakeDamage(damage); hit = true; }
+
+            if (!hit) return;
+
+            if (explosionPrefab != null)
+                Instantiate(explosionPrefab, transform.position, transform.rotation);
 
             Destroy(gameObject);
         }
@@ -82,9 +87,6 @@ namespace BulletHell
                 trail.Stop();
                 Destroy(trail.gameObject, 2f);
             }
-
-            if (explosionPrefab != null)
-                Instantiate(explosionPrefab, transform.position, transform.rotation);
         }
     }
 }

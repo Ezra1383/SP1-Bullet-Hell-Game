@@ -12,6 +12,8 @@ namespace BulletHell
         [SerializeField] private Transform firePoint;
         [SerializeField] private float fireRate = 1f;
         [SerializeField] private bool canShoot = true;
+        [SerializeField] private AudioClip shootSound;
+        [Range(0f, 3f)][SerializeField] private float shootVolume = 1f;
         [SerializeField] private GameObject explosionPrefab;
 
         // --- Retreat tuning (tweak in Inspector via constants or expose if needed) ---
@@ -319,6 +321,15 @@ namespace BulletHell
             GameObject bullet = Instantiate(bulletPrefab, firePoint.position, Quaternion.LookRotation(direction));
 
             // Enemy_Bullet prefab uses Projectile.cs — must call Launch() to enable movement
+            if (shootSound != null)
+            {
+                var src = new GameObject("SFX").AddComponent<AudioSource>();
+                src.transform.position = firePoint.position;
+                src.volume = shootVolume;
+                src.PlayOneShot(shootSound);
+                Destroy(src.gameObject, shootSound.length);
+            }
+
             Projectile projectile = bullet.GetComponent<Projectile>();
             if (projectile != null)
             {
@@ -355,14 +366,6 @@ namespace BulletHell
                 Destroy(gameObject);
         }
 
-        void OnTriggerEnter(Collider other)
-        {
-            if (other.CompareTag("PlayerBullet"))
-            {
-                TakeDamage(1);
-                Destroy(other.gameObject);
-            }
-        }
     }
 
     public class EnemyBullet : MonoBehaviour

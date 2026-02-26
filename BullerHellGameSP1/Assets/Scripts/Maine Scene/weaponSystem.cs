@@ -10,6 +10,10 @@ namespace BulletHell
         [SerializeField] private GameObject bulletPrefab;
         [SerializeField] private Transform[] firePoints;
 
+        [Header("Audio")]
+        [SerializeField] private AudioClip shootSound;
+        [Range(0f, 3f)][SerializeField] private float shootVolume = 1f;
+
         [Header("Settings")]
         [SerializeField] private float fireRate = 0.1f;
         [SerializeField] private bool alternateFire = false;
@@ -98,6 +102,14 @@ namespace BulletHell
                     SpawnBullet(pt);
             }
             nextFireTime = Time.time + fireRate;
+            if (shootSound != null)
+            {
+                var src = new GameObject("SFX").AddComponent<AudioSource>();
+                src.transform.position = transform.position;
+                src.volume = shootVolume;
+                src.PlayOneShot(shootSound);
+                Destroy(src.gameObject, shootSound.length);
+            }
         }
 
         private void SpawnBullet(Transform point)
