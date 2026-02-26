@@ -55,8 +55,10 @@ namespace BulletHell
 
             if (timer <= 0f)
             {
-                Time.timeScale = 1f;
-                active         = false;
+                // Only restore timeScale if nothing else (e.g. GameOverScreen) has overridden it
+                if (Mathf.Approximately(Time.timeScale, frozenTimeScale))
+                    Time.timeScale = 1f;
+                active = false;
             }
         }
 

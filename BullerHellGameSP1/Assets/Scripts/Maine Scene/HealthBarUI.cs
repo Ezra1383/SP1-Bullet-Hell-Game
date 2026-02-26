@@ -30,8 +30,8 @@ namespace BulletHell
         [Tooltip("Ind_Health_right.png — red fill, tip on right, curves into center on left")]
         [SerializeField] private Sprite rightFillSprite;
 
-        [Tooltip("Ind_Health_backplate.png — dark angular background behind the fill")]
-        [SerializeField] private Sprite backplateSprite;
+    
+        
 
         [Tooltip("Ind_Center_backplate.png — dark circle for the center medallion")]
         [SerializeField] private Sprite centerSprite;
@@ -157,17 +157,10 @@ namespace BulletHell
             rootRect.sizeDelta        = new Vector2(rootWidth, rootHeight);
 
             // ── Left backplate ────────────────────────────────────────────────
-            MakeWingImage("BackplateLeft", root.transform,
-                backplateSprite, backplateTint,
-                pivot: new Vector2(1f, 0.5f),
-                anchoredPos: new Vector2(-(halfCenter + wingGap), 0f));
+        
 
             // ── Right backplate ───────────────────────────────────────────────
-            MakeWingImage("BackplateRight", root.transform,
-                backplateSprite, backplateTint,
-                pivot: new Vector2(0f, 0.5f),
-                anchoredPos: new Vector2(halfCenter + wingGap, 0f),
-                flipX: true);
+      
 
             // ── Left fill ─────────────────────────────────────────────────────
             leftFill = MakeWingImage("FillLeft", root.transform,

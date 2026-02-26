@@ -27,12 +27,18 @@ namespace BulletHell
 
         private float nextFireTime;
         private int currentFirePointIndex = 0;
+        private Camera mainCam;
+
+        private void Awake()
+        {
+            mainCam = Camera.main;
+        }
 
         private void Update()
         {
             if (input == null || aimTarget == null) return;
 
-            Camera mainCam = Camera.main;
+            if (mainCam == null) mainCam = Camera.main;
             if (mainCam == null) return;
 
             // All guns aim parallel - in the direction from camera through aimpoint
@@ -54,7 +60,8 @@ namespace BulletHell
                 }
             }
 
-            bool shouldFire = input.useMediaPipeInput || input.IsFiring;
+            bool shouldFire = input.IsFiring ||
+                              (input.useMediaPipeInput && IsAimOnEnemy(mainCam));
 
             if (shouldFire && Time.time >= nextFireTime)
             {

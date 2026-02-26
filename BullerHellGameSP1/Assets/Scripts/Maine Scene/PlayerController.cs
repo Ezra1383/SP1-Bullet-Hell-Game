@@ -88,9 +88,11 @@ namespace BulletHell
             Debug.Log($"Player Hit! Health: {currentHealth}");
 
             HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
-            HitStopManager.Instance?.TriggerHitStop();
 
-            if (currentHealth <= 0) Die();
+            if (currentHealth <= 0)
+                Die();
+            else
+                HitStopManager.Instance?.TriggerHitStop();
         }
 
         private void HandleRegeneration()
@@ -235,7 +237,7 @@ namespace BulletHell
 
         private void RotateTurret(Transform turret)
         {
-            if (turret == null) return;
+            if (turret == null || aimTarget == null) return;
             Vector3 direction = aimTarget.position - turret.position;
             if (direction.sqrMagnitude < 0.1f) return;
             turret.rotation = Quaternion.Slerp(turret.rotation, Quaternion.LookRotation(direction), turretRotateSpeed * Time.deltaTime);

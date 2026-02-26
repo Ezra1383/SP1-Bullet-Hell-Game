@@ -50,6 +50,13 @@ namespace BulletHell
 
         void Start()
         {
+            if (enemyTypes == null || enemyTypes.Length == 0)
+            {
+                Debug.LogError("ProceduralEnemySpawner: no enemy types configured!", this);
+                enabled = false;
+                return;
+            }
+
             if (spline != null)
                 CachedSplineLength = spline.Spline.GetLength();
 
