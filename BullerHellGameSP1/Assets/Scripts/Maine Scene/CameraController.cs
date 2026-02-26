@@ -7,6 +7,8 @@ namespace BulletHell
         [Header("Targets")]
         // Drag the same "Follow Target" (the rail anchor) used in PlayerController here
         [SerializeField] private Transform railTarget;
+        [Tooltip("Drag the Player GameObject here. The camera will look ahead from the player's position instead of the rail anchor, keeping the ship in view with more battlefield visible in front.")]
+        [SerializeField] private Transform playerTransform;
 
         [Header("Position Settings")]
         [SerializeField] private float followDistance = 20f;
@@ -31,8 +33,9 @@ namespace BulletHell
             // 2. Smoothly move the camera to that position
             transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, smoothTime);
 
-            // 3. Determine the point to look at (slightly ahead on the rail)
-            Vector3 lookAtPoint = railTarget.position + (railTarget.forward * lookAheadDistance) + lookOffset;
+            // 3. Determine the point to look at ahead of the player (falls back to rail if player not assigned)
+            Vector3 lookOrigin = playerTransform != null ? playerTransform.position : railTarget.position;
+            Vector3 lookAtPoint = lookOrigin + (railTarget.forward * lookAheadDistance) + lookOffset;
 
             transform.LookAt(lookAtPoint);
         }
