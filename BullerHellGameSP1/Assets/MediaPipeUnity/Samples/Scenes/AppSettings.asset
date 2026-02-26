@@ -23,34 +23,34 @@ MonoBehaviour:
   _defaultAvailableWebCamResolutions:
   - width: 176
     height: 144
-    frameRate: 30
+    frameRate: 60
   - width: 320
     height: 240
-    frameRate: 30
+    frameRate: 60
   - width: 424
     height: 240
-    frameRate: 30
+    frameRate: 60
   - width: 640
     height: 360
-    frameRate: 30
+    frameRate: 60
   - width: 640
     height: 480
-    frameRate: 30
+    frameRate: 60
   - width: 848
     height: 480
-    frameRate: 30
+    frameRate: 60
   - width: 960
     height: 540
-    frameRate: 30
+    frameRate: 60
   - width: 1280
     height: 720
-    frameRate: 30
+    frameRate: 60
   - width: 1600
     height: 896
-    frameRate: 30
+    frameRate: 60
   - width: 1920
     height: 1080
-    frameRate: 30
+    frameRate: 60
   _availableStaticImageSources: []
   _defaultAvailableStaticImageResolutions:
   - width: 512

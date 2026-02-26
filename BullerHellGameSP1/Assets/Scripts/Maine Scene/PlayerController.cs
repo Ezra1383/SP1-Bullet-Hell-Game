@@ -17,8 +17,12 @@ namespace BulletHell
         [SerializeField] private float regenDelay = 10f; // Wait 10s after being hit
         [SerializeField] private float regenInterval = 1f; // Heal 1 HP every 1s after delay
 
+        [Header("Invulnerability")]
+        [SerializeField] private float invulnerableDuration = 0.5f;
+
         private float lastHitTime;
         private float nextRegenTick;
+        private float invulnerableTimer;
 
         [Header("Visual Framing")]
         [SerializeField] private Vector2 homeOffset = new Vector2(0, -1.5f);
@@ -62,6 +66,7 @@ namespace BulletHell
 
         private void Start()
         {
+            Application.targetFrameRate = 60;
             currentHealth = maxHealth;
 
             if (mainCamera == null)
@@ -74,6 +79,9 @@ namespace BulletHell
         {
             if (followTarget == null || input == null) return;
 
+            if (invulnerableTimer > 0f)
+                invulnerableTimer -= Time.deltaTime;
+
             HandleMovement();
             HandleRotation();
             UpdateAimTarget();
@@ -83,7 +91,10 @@ namespace BulletHell
 
         public void TakeDamage(int damage)
         {
+            if (invulnerableTimer > 0f) return;
+
             currentHealth -= damage;
+            invulnerableTimer = invulnerableDuration;
             lastHitTime = Time.time; // Reset the 10-second timer
             Debug.Log($"Player Hit! Health: {currentHealth}");
 
