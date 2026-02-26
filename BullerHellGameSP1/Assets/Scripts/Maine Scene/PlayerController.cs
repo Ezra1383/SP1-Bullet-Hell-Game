@@ -9,6 +9,7 @@ namespace BulletHell
         [SerializeField] private InputReader input;
         [SerializeField] private Transform followTarget;
         [SerializeField] private Transform aimTarget;
+        [SerializeField] private Transform aimTarget2;
         [SerializeField] private Transform playerModel;
 
         [Header("Player Stats & Regen")]
@@ -85,6 +86,7 @@ namespace BulletHell
             HandleMovement();
             HandleRotation();
             UpdateAimTarget();
+            UpdateAimTarget2();
             HandleTurretAiming();
             HandleRegeneration();
         }
@@ -238,6 +240,29 @@ namespace BulletHell
 
             aimTarget.DOKill();
             aimTarget.DOLocalMove(desiredLocal, aimTweenDuration).SetEase(aimEase);
+        }
+
+        private void UpdateAimTarget2()
+        {
+            if (aimTarget2 == null || mainCamera == null) return;
+
+            Vector3 mousePos = (Vector3)input.Aim2;
+            Ray ray = mainCamera.ScreenPointToRay(mousePos);
+
+            Vector3 planeCenter = transform.position + transform.forward * aimDistance;
+            Plane aimPlane = new Plane(-mainCamera.transform.forward, planeCenter);
+
+            Vector3 worldHit;
+            if (aimPlane.Raycast(ray, out float enter))
+                worldHit = ray.GetPoint(enter);
+            else
+                worldHit = planeCenter;
+
+            Vector3 localHit = transform.InverseTransformPoint(worldHit);
+            Vector3 desiredLocal = new Vector3(localHit.x, localHit.y, aimTarget2.localPosition.z);
+
+            aimTarget2.DOKill();
+            aimTarget2.DOLocalMove(desiredLocal, aimTweenDuration).SetEase(aimEase);
         }
 
         private void HandleTurretAiming()

@@ -10,7 +10,7 @@ using Mediapipe.Unity.Sample.PoseLandmarkDetection;
 /// Bridges MediaPipe Unity Plugin results into the existing Bullet Hell input system.
 /// Control mapping:
 /// - Movement: Direct 1:1 mapping - plane position matches nose position on screen (X and Y).
-/// - Aim: Left wrist from pose detection only.
+/// - Aim: Left wrist → primary crosshair. Right wrist → secondary crosshair.
 ///
 /// Position mapping:
 /// - Nose X position (0=left, 1=right) → Plane X position (0=left, 1=right)
@@ -63,8 +63,9 @@ public class MediaPipeInputBridge : MonoBehaviour
         if (inputReader != null)
         {
             inputReader.useMediaPipeInput = true;
-            // Default aim to screen center so AimPoint isn't stuck at (0,0) when no wrist data yet.
+            // Default both aim points to screen center so they aren't stuck at (0,0) before wrist data arrives.
             inputReader.SetMediaPipeAim(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f));
+            inputReader.SetMediaPipeAim2(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f));
         }
     }
 
@@ -143,23 +144,30 @@ public class MediaPipeInputBridge : MonoBehaviour
         inputReader.SetMediaPipeMove(new Vector2(normX, normY));
         inputReader.SetMediaPipeInputVelocity(inputVelocity);
 
-        // Aiming using left wrist position only
+        // Left wrist → primary aim (Crosshair / aimTarget)
         if (landmarks.landmarks.Count > PoseLeftWrist)
         {
             var leftWrist = landmarks.landmarks[PoseLeftWrist];
-
-            // Convert normalized wrist position to screen coordinates
-            float wristNormX = Mathf.Clamp01(leftWrist.x);
-            float wristNormY = Mathf.Clamp01(leftWrist.y);
-
-            float screenX = wristNormX * _cachedScreenWidth;
-            float screenY = (1f - wristNormY) * _cachedScreenHeight; // Flip Y to match Unity screen coords
-
+            float screenX = Mathf.Clamp01(leftWrist.x) * _cachedScreenWidth;
+            float screenY = (1f - Mathf.Clamp01(leftWrist.y)) * _cachedScreenHeight;
             inputReader.SetMediaPipeAim(new Vector2(screenX, screenY));
         }
         else
         {
             SetAimToScreenCenter();
+        }
+
+        // Right wrist → secondary aim (Crosshair2 / aimTarget2)
+        if (landmarks.landmarks.Count > PoseRightWrist)
+        {
+            var rightWrist = landmarks.landmarks[PoseRightWrist];
+            float screenX2 = Mathf.Clamp01(rightWrist.x) * _cachedScreenWidth;
+            float screenY2 = (1f - Mathf.Clamp01(rightWrist.y)) * _cachedScreenHeight;
+            inputReader.SetMediaPipeAim2(new Vector2(screenX2, screenY2));
+        }
+        else
+        {
+            SetAim2ToScreenCenter();
         }
     }
 
@@ -167,5 +175,11 @@ public class MediaPipeInputBridge : MonoBehaviour
     {
         if (inputReader != null)
             inputReader.SetMediaPipeAim(new Vector2(_cachedScreenWidth * 0.5f, _cachedScreenHeight * 0.5f));
+    }
+
+    private void SetAim2ToScreenCenter()
+    {
+        if (inputReader != null)
+            inputReader.SetMediaPipeAim2(new Vector2(_cachedScreenWidth * 0.5f, _cachedScreenHeight * 0.5f));
     }
 }

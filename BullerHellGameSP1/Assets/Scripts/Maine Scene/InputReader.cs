@@ -26,6 +26,7 @@ namespace BulletHell
         public bool useMediaPipeInput = false;
         private Vector2 _mediaPipeMove;
         private Vector2 _mediaPipeAim;
+        private Vector2 _mediaPipeAim2;
         private bool _mediaPipeFire;
         private Vector2 _mediaPipeInputVelocity; // Delta/velocity of input (not plane movement)
 
@@ -48,6 +49,15 @@ namespace BulletHell
             }
         }
 
+        public Vector2 Aim2
+        {
+            get
+            {
+                if (useMediaPipeInput) return _mediaPipeAim2;
+                return Vector2.zero;
+            }
+        }
+
         public bool IsFiring
         {
             get
@@ -59,6 +69,7 @@ namespace BulletHell
 
         public void SetMediaPipeMove(Vector2 move) => _mediaPipeMove = move;
         public void SetMediaPipeAim(Vector2 aim) => _mediaPipeAim = aim;
+        public void SetMediaPipeAim2(Vector2 aim) => _mediaPipeAim2 = aim;
         public void SetMediaPipeFire(bool fire) => _mediaPipeFire = fire;
         public void SetMediaPipeInputVelocity(Vector2 velocity) => _mediaPipeInputVelocity = velocity;
 

@@ -7,8 +7,10 @@ namespace BulletHell
         [Header("References")]
         [SerializeField] private InputReader input;
         [SerializeField] private Transform aimTarget;
+        [SerializeField] private Transform aimTarget2;
         [SerializeField] private GameObject bulletPrefab;
         [SerializeField] private Transform[] firePoints;
+        [SerializeField] private Transform[] firePoints2;
 
         [Header("Audio")]
         [SerializeField] private AudioClip shootSound;
@@ -34,6 +36,25 @@ namespace BulletHell
         private void Awake()
         {
             mainCam = Camera.main;
+        }
+
+        private void Start()
+        {
+            // Diagnostic: catch common Inspector setup mistakes for the dual-aim system.
+            // NOTE: PlayerController and WeaponSystem BOTH have an aimTarget2 field.
+            // Assigning Crosshair2 in PlayerController does NOT automatically assign it here.
+            if (aimTarget2 == null)
+                Debug.LogWarning("[WeaponSystem] Aim Target 2 is not assigned on the WeaponSystem component. " +
+                    "The second crosshair won't trigger firing and FirePoint2 won't rotate. " +
+                    "Drag Crosshair2 into the Aim Target 2 slot on the WeaponSystem Inspector " +
+                    "(separate from the PlayerController slot).");
+
+            if (aimTarget2 != null && (firePoints2 == null || firePoints2.Length == 0))
+                Debug.LogWarning("[WeaponSystem] aimTarget2 is assigned but Fire Points 2 is empty. " +
+                    "Drag FirePoint2 into the Fire Points 2 array on the WeaponSystem Inspector.");
+
+            if (aimTarget2 != null && firePoints2 != null && firePoints2.Length > 0)
+                Debug.Log("[WeaponSystem] Dual-aim ready: aimTarget2 + firePoints2 both assigned.");
         }
 
         private void Update()
@@ -62,8 +83,27 @@ namespace BulletHell
                 }
             }
 
+            if (aimTarget2 != null && firePoints2 != null && firePoints2.Length > 0)
+            {
+                Vector3 aimDir2 = (aimTarget2.position - mainCam.transform.position).normalized;
+                Quaternion targetRot2 = Quaternion.LookRotation(aimDir2);
+                foreach (Transform fp in firePoints2)
+                {
+                    if (fp != null)
+                    {
+                        fp.rotation = Quaternion.Slerp(fp.rotation, targetRot2, aimSpeed * Time.deltaTime);
+
+                        if (showDebugRays)
+                        {
+                            Debug.DrawRay(fp.position, fp.forward * 100f, Color.cyan);
+                            Debug.DrawLine(fp.position, aimTarget2.position, Color.magenta);
+                        }
+                    }
+                }
+            }
+
             bool shouldFire = input.IsFiring ||
-                              (input.useMediaPipeInput && IsAimOnEnemy(mainCam));
+                              (input.useMediaPipeInput && (IsAimOnEnemy(mainCam, aimTarget) || IsAimOnEnemy(mainCam, aimTarget2)));
 
             if (shouldFire && Time.time >= nextFireTime)
             {
@@ -74,21 +114,29 @@ namespace BulletHell
         /// <summary>
         /// When using MediaPipe: only fire when the ray from camera through aim target hits an enemy.
         /// </summary>
-        private bool IsAimOnEnemy(Camera cam)
+        private bool IsAimOnEnemy(Camera cam, Transform target)
         {
-            if (cam == null || aimTarget == null) return false;
+            if (cam == null || target == null) return false;
             Vector3 origin = cam.transform.position;
-            Vector3 dir = (aimTarget.position - origin).normalized;
+            Vector3 dir = (target.position - origin).normalized;
             Ray ray = new Ray(origin, dir);
             RaycastHit[] hits = aimRayRadius > 0f
                 ? Physics.SphereCastAll(ray, aimRayRadius, aimRayDistance, aimRayLayerMask)
                 : Physics.RaycastAll(ray, aimRayDistance, aimRayLayerMask);
 
+            if (showDebugRays)
+                Debug.DrawRay(origin, dir * 200f, target == aimTarget ? Color.yellow : Color.red);
+
             // Sort by distance and return true if the first valid hit is an enemy
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
             foreach (RaycastHit hit in hits)
             {
-                if (hit.transform == aimTarget || hit.transform.IsChildOf(aimTarget))
+                if (showDebugRays)
+                    Debug.Log($"[IsAimOnEnemy:{target.name}] hit '{hit.collider.name}' " +
+                        $"tag='{hit.collider.tag}' dist={hit.distance:F1} " +
+                        $"isSelf={hit.transform == target || hit.transform.IsChildOf(target)}");
+
+                if (hit.transform == target || hit.transform.IsChildOf(target))
                     continue;
                 if (hit.collider.CompareTag("Player") || hit.collider.CompareTag("PlayerBullet"))
                     continue;
@@ -112,6 +160,12 @@ namespace BulletHell
                 foreach (Transform pt in firePoints)
                     SpawnBullet(pt);
             }
+            if (firePoints2 != null)
+            {
+                foreach (Transform pt in firePoints2)
+                    SpawnBullet(pt);
+            }
+
             nextFireTime = Time.time + fireRate;
             if (shootSound != null)
             {
