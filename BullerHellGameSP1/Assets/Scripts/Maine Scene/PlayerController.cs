@@ -5,6 +5,9 @@ namespace BulletHell
 {
     public class PlayerController : MonoBehaviour
     {
+        [Header("Damage Numbers")]
+        [SerializeField] private GameObject damageNumberPrefab;
+
         [Header("References")]
         [SerializeField] private InputReader input;
         [SerializeField] private Transform followTarget;
@@ -65,6 +68,10 @@ namespace BulletHell
         // Public property to expose current speed magnitude
         public float CurrentSpeed => velocity.magnitude;
 
+        // Events for UI systems to react to damage and health changes
+        public static event System.Action OnDamaged;
+        public static event System.Action<int, int> OnHealthChanged; // current, max
+
         private void Start()
         {
             Application.targetFrameRate = 60;
@@ -74,6 +81,7 @@ namespace BulletHell
                 mainCamera = Camera.main;
 
             HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
+            OnHealthChanged?.Invoke(currentHealth, maxHealth);
         }
 
         private void Update()
@@ -101,6 +109,15 @@ namespace BulletHell
             Debug.Log($"Player Hit! Health: {currentHealth}");
 
             HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
+            OnDamaged?.Invoke();
+            OnHealthChanged?.Invoke(currentHealth, maxHealth);
+
+            if (damageNumberPrefab != null)
+            {
+                Vector3 spawnPos = transform.position + Vector3.up * 1.5f;
+                var dn = Instantiate(damageNumberPrefab, spawnPos, Quaternion.identity);
+                dn.GetComponent<DamageNumber>()?.Play(damage, spawnPos, Camera.main);
+            }
 
             if (currentHealth <= 0)
                 Die();
@@ -119,6 +136,7 @@ namespace BulletHell
                     nextRegenTick = Time.time + regenInterval;
                     Debug.Log($"Regenerating... Health: {currentHealth}");
                     HealthBarUI.Instance?.SetHealth(currentHealth, maxHealth);
+                    OnHealthChanged?.Invoke(currentHealth, maxHealth);
                 }
             }
         }

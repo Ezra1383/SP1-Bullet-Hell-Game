@@ -9,6 +9,9 @@ namespace BulletHell
     {
         public static GameOverScreen Instance { get; private set; }
 
+        // Fired before time stops — lets other systems (timer, stats) react before freeze
+        public static event System.Action OnGameOver;
+
         [Header("Panel")]
         [Tooltip("Root panel GameObject to show/hide.")]
         [SerializeField] private GameObject panel;
@@ -35,8 +38,11 @@ namespace BulletHell
             if (retryButton != null) retryButton.onClick.AddListener(OnRetry);
         }
 
+        public bool IsVisible => panel != null && panel.activeSelf;
+
         public void Show()
         {
+            OnGameOver?.Invoke();
             Time.timeScale = 0f;
 
             if (panel        != null) panel.SetActive(true);

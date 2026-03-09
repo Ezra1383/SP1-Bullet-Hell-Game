@@ -7,6 +7,12 @@ namespace BulletHell
 {
     public class EnemyController : MonoBehaviour
     {
+        // Fired whenever any enemy is killed — used by UI systems (combo, stats, etc.)
+        public static event System.Action OnEnemyKilled;
+
+        [Header("Damage Numbers")]
+        [SerializeField] private GameObject damageNumberPrefab;
+
         [Header("Shooting")]
         [SerializeField] private GameObject bulletPrefab;
         [SerializeField] private Transform firePoint;
@@ -345,11 +351,20 @@ namespace BulletHell
         public void TakeDamage(int damage)
         {
             health -= damage;
+
+            if (damageNumberPrefab != null)
+            {
+                Vector3 spawnPos = transform.position + Vector3.up;
+                var dn = Instantiate(damageNumberPrefab, spawnPos, Quaternion.identity);
+                dn.GetComponent<DamageNumber>()?.Play(damage, spawnPos, Camera.main);
+            }
+
             if (health <= 0) Die();
         }
 
         void Die()
         {
+            OnEnemyKilled?.Invoke();
             ScoreManager.Instance?.AddScore(scoreValue);
 
             if (explosionPrefab != null)

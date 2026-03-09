@@ -26,6 +26,9 @@ namespace BulletHell
         [SerializeField] private GameObject bulletPrefab;
         [SerializeField] private List<CannonBattery> cannons = new List<CannonBattery>();
 
+        [Header("Damage Numbers")]
+        [SerializeField] private GameObject damageNumberPrefab;
+
         [Header("Death")]
         [SerializeField] private GameObject explosion;
 
@@ -94,6 +97,14 @@ namespace BulletHell
         public void TakeDamage(int damage)
         {
             health -= damage;
+
+            if (damageNumberPrefab != null)
+            {
+                Vector3 spawnPos = transform.position + Vector3.up * 2f;
+                var dn = Instantiate(damageNumberPrefab, spawnPos, Quaternion.identity);
+                dn.GetComponent<DamageNumber>()?.Play(damage, spawnPos, Camera.main);
+            }
+
             if (health <= 0) Die();
         }
 

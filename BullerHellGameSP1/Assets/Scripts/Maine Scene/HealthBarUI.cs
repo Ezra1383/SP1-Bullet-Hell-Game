@@ -1,3 +1,4 @@
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -65,6 +66,12 @@ namespace BulletHell
         [SerializeField] private float flashDuration   = 0.20f;
         [SerializeField] private Color flashColor      = Color.white;
 
+        // ── Low Health Pulse ───────────────────────────────────────────────────
+        [Header("Low Health Pulse")]
+        [SerializeField] [Range(0f, 1f)] private float pulseThreshold = 0.3f;
+        [SerializeField] private Color pulseColor = new Color(1f, 0.1f, 0.1f, 1f);
+        [SerializeField] private float pulseDuration = 0.5f;
+
         // ── Runtime ────────────────────────────────────────────────────────────
         private Image              leftFill;
         private Image              rightFill;
@@ -73,6 +80,9 @@ namespace BulletHell
         private int                cachedCurrent;
         private int                cachedMax;
         private Color              baseFillColor;
+        private Tweener            leftPulseTween;
+        private Tweener            rightPulseTween;
+        private bool               isPulsing;
 
         // ──────────────────────────────────────────────────────────────────────
 
@@ -113,7 +123,16 @@ namespace BulletHell
                 healthText.text = current.ToString();
 
             if (tookDamage)
+            {
+                // Kill pulse tweens so the flash can control color freely
+                StopPulse();
                 flashTimer = flashDuration;
+            }
+            else
+            {
+                // Healed or initialized — safe to start/stop pulse
+                UpdateLowHealthPulse(ratio);
+            }
         }
 
         void Update()
@@ -121,10 +140,49 @@ namespace BulletHell
             if (flashTimer <= 0f) return;
 
             flashTimer -= Time.deltaTime;
-            float t    = Mathf.Clamp01(flashTimer / flashDuration);
-            Color c    = Color.Lerp(baseFillColor, flashColor, t);
+            if (flashTimer <= 0f)
+            {
+                // Flash just ended — restore base color and restart pulse if needed
+                leftFill.color  = baseFillColor;
+                rightFill.color = baseFillColor;
+                float ratio = cachedMax > 0 ? Mathf.Clamp01((float)cachedCurrent / cachedMax) : 0f;
+                UpdateLowHealthPulse(ratio);
+                return;
+            }
+
+            float t = Mathf.Clamp01(flashTimer / flashDuration);
+            Color c = Color.Lerp(baseFillColor, flashColor, t);
             leftFill.color  = c;
             rightFill.color = c;
+        }
+
+        private void UpdateLowHealthPulse(float ratio)
+        {
+            if (leftFill == null) return;
+
+            if (ratio < pulseThreshold && !isPulsing)
+            {
+                isPulsing = true;
+                leftPulseTween  = leftFill.DOColor(pulseColor, pulseDuration)
+                    .SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
+                rightPulseTween = rightFill.DOColor(pulseColor, pulseDuration)
+                    .SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
+            }
+            else if (ratio >= pulseThreshold && isPulsing)
+            {
+                StopPulse();
+                leftFill.color  = baseFillColor;
+                rightFill.color = baseFillColor;
+            }
+        }
+
+        private void StopPulse()
+        {
+            isPulsing = false;
+            leftPulseTween?.Kill();
+            rightPulseTween?.Kill();
+            leftPulseTween  = null;
+            rightPulseTween = null;
         }
 
         // ── UI Construction ────────────────────────────────────────────────────
