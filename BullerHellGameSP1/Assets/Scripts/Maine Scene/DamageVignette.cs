@@ -8,16 +8,20 @@ namespace BulletHell
     /// Full-screen red vignette that flashes on damage and glows softly at low health.
     ///
     /// SETUP:
-    /// 1. Add a full-screen Image to your HUD Canvas (anchorMin 0,0 / anchorMax 1,1 / all offsets 0).
-    /// 2. Use a dark-red vignette sprite (transparent center, dark edges) — or a solid dark-red
-    ///    Image works too; adjust flashAlpha to taste.
-    /// 3. Set raycastTarget = false on the Image.
-    /// 4. Assign the Image to vignetteImage in the Inspector.
-    /// 5. Set the Image's starting Color alpha to 0.
+    /// 1. Add a full-screen RawImage to your HUD Canvas (anchorMin 0,0 / anchorMax 1,1 / all offsets 0).
+    /// 2. Set raycastTarget = false on the RawImage.
+    /// 3. Assign the RawImage to vignetteImage in the Inspector.
+    ///    The vignette texture (transparent center, red edges) is generated automatically at runtime.
     /// </summary>
     public class DamageVignette : MonoBehaviour
     {
-        [SerializeField] private Image vignetteImage;
+        [SerializeField] private RawImage vignetteImage;
+
+        [Header("Vignette Shape")]
+        [SerializeField] private int textureResolution = 256;
+        [SerializeField] [Range(0f, 1f)] private float innerRadius = 0.35f;
+        [SerializeField] [Range(0f, 1f)] private float outerRadius = 0.75f;
+        [SerializeField] private float aspectRatio = 1.78f; // 16:9 — widen the ellipse horizontally
 
         [Header("Flash Settings")]
         [SerializeField] private float flashAlpha = 0.65f;
@@ -36,13 +40,45 @@ namespace BulletHell
             PlayerController.OnDamaged += OnPlayerDamaged;
             PlayerController.OnHealthChanged += OnHealthChanged;
 
-            // Start fully transparent
             if (vignetteImage != null)
             {
+                vignetteImage.texture = GenerateVignetteTexture();
                 Color c = vignetteImage.color;
                 c.a = 0f;
                 vignetteImage.color = c;
             }
+        }
+
+        private Texture2D GenerateVignetteTexture()
+        {
+            int res = textureResolution;
+            Texture2D tex = new Texture2D(res, res, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Clamp;
+
+            Color[] pixels = new Color[res * res];
+            Vector2 center = new Vector2(0.5f, 0.5f);
+
+            for (int y = 0; y < res; y++)
+            {
+                for (int x = 0; x < res; x++)
+                {
+                    float u = (float)x / (res - 1);
+                    float v = (float)y / (res - 1);
+                    float dx = (u - 0.5f) * 2f;
+                    float dy = (v - 0.5f) * 2f * aspectRatio; // scale Y by aspect ratio to form an ellipse
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    // Map distance to alpha: 0 inside innerRadius, 1 outside outerRadius
+                    float alpha = Mathf.InverseLerp(innerRadius, outerRadius, dist);
+                    alpha = Mathf.Clamp01(alpha);
+
+                    pixels[y * res + x] = new Color(1f, 0f, 0f, alpha);
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return tex;
         }
 
         private void OnDestroy()

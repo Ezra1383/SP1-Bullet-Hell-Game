@@ -45,6 +45,10 @@ public class MediaPipeInputBridge : MonoBehaviour
     {
         if (PlayerPrefs.GetInt(MovementTrackingKey, 1) == 0)
         {
+            if (inputReader == null)
+                inputReader = FindObjectOfType<InputReader>();
+            if (inputReader != null)
+                inputReader.useMediaPipeInput = false;
             enabled = false;
             return;
         }
